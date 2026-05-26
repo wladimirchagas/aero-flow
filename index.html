@@ -69,6 +69,21 @@
                         <div class="autocomplete-list" id="location-suggestions"></div>
                     </div>
 
+                    <!-- Connection Type Filter -->
+                    <div class="connection-filter-box">
+                        <span class="sub-section-title">Connection Type</span>
+                        <div class="connection-toggle">
+                            <button class="conn-btn active" id="btn-direct" data-conn="direct">
+                                <i data-lucide="arrow-right-left" class="inline-icon-small"></i>
+                                <span>Direct Only</span>
+                            </button>
+                            <button class="conn-btn" id="btn-connecting" data-conn="connecting">
+                                <i data-lucide="git-commit" class="inline-icon-small"></i>
+                                <span>1-Stop Connections</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Active Filter Pill -->
                     <div class="active-pill" id="active-filter-pill" style="display: none;">
                         <span class="pill-text" id="filter-pill-label">Selected: Qantas</span>

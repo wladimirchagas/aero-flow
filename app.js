@@ -39,6 +39,7 @@ const state = {
 
     // Filtering State
     activeTab: 'airline', // 'airline' or 'location'
+    connectionType: 'direct', // 'direct' or 'connecting'
     activeFilter: {
         type: null, // 'airline' or 'location'
         value: null // airline IATA code or airport index
@@ -378,6 +379,37 @@ function initUI() {
     document.getElementById('filter-pill-close').addEventListener('click', () => {
         resetFilter();
     });
+
+    // 6. Connection Type toggle buttons
+    const btnDirect = document.getElementById('btn-direct');
+    const btnConnecting = document.getElementById('btn-connecting');
+    
+    btnDirect.addEventListener('click', () => {
+        if (state.connectionType === 'direct') return;
+        state.connectionType = 'direct';
+        btnDirect.classList.add('active');
+        btnConnecting.classList.remove('active');
+        reapplyActiveFilter();
+    });
+    
+    btnConnecting.addEventListener('click', () => {
+        if (state.connectionType === 'connecting') return;
+        state.connectionType = 'connecting';
+        btnConnecting.classList.add('active');
+        btnDirect.classList.remove('active');
+        reapplyActiveFilter();
+    });
+}
+
+// Re-apply active filters when toggling modes
+function reapplyActiveFilter() {
+    if (state.activeFilter.type === 'airline') {
+        setAirlineFilter(state.activeFilter.value);
+    } else if (state.activeFilter.type === 'location') {
+        setLocationFilter(state.activeFilter.value);
+    } else {
+        resetFilter();
+    }
 }
 
 // Enable/Disable auto rotation
@@ -524,7 +556,8 @@ function setAirlineFilter(iata) {
     state.activeRoutes = al.routes.map(r => ({
         src: state.airports[r[0]],
         dst: state.airports[r[1]],
-        airline: iata
+        airline: iata,
+        type: 'direct'
     }));
     
     // Focus view towards airline hubs (average coordinates of its routes)
@@ -559,19 +592,72 @@ function setLocationFilter(apIdx) {
     state.activeFilter = { type: 'location', value: apIdx };
     state.selectedAirportIndex = apIdx;
     
-    // Process active routes (arriving or departing this airport)
     state.activeRoutes = [];
+    
+    // 1. Gather all direct routes first (A -> H)
+    const directConnectedSet = new Set();
+    const directRoutes = [];
+    
     Object.entries(state.airlines).forEach(([alIata, al]) => {
         al.routes.forEach(r => {
             if (r[0] === apIdx || r[1] === apIdx) {
-                state.activeRoutes.push({
-                    src: state.airports[r[0]],
-                    dst: state.airports[r[1]],
-                    airline: alIata
+                const src = state.airports[r[0]];
+                const dst = state.airports[r[1]];
+                
+                // Track which airport is connected directly
+                const otherIdx = r[0] === apIdx ? r[1] : r[0];
+                directConnectedSet.add(otherIdx);
+                
+                directRoutes.push({
+                    src: src,
+                    dst: dst,
+                    airline: alIata,
+                    type: 'direct'
                 });
             }
         });
     });
+    
+    state.activeRoutes.push(...directRoutes);
+    
+    // 2. If 'connecting' type selected, compute 2-hop layovers (Paris -> Hub -> Destination)
+    if (state.connectionType === 'connecting') {
+        const connectingRoutes = [];
+        const seenConnectingDest = new Set();
+        
+        // Loop through all direct connected airports (layover hubs)
+        directConnectedSet.forEach(hubIdx => {
+            // Find routes outbound from this hub
+            Object.entries(state.airlines).forEach(([alIata, al]) => {
+                al.routes.forEach(r => {
+                    if (r[0] === hubIdx) {
+                        const destIdx = r[1];
+                        
+                        // Destination must not be the starting airport, and not already directly connected
+                        if (destIdx !== apIdx && !directConnectedSet.has(destIdx)) {
+                            const key = `${hubIdx}-${destIdx}`;
+                            if (!seenConnectingDest.has(key)) {
+                                seenConnectingDest.add(key);
+                                
+                                connectingRoutes.push({
+                                    src: state.airports[hubIdx],
+                                    dst: state.airports[destIdx],
+                                    airline: alIata,
+                                    type: 'connecting'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+        
+        // Sort connecting destinations by busiest
+        connectingRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        
+        // Keep up to 250 connecting paths to ensure fluid 60 FPS canvas performance
+        state.activeRoutes.push(...connectingRoutes.slice(0, 250));
+    }
     
     // Focus camera directly on airport
     focusCameraOnPoints([[ap.lon, ap.lat]]);
@@ -776,7 +862,7 @@ function displayLocationAirlines(apIdx) {
 // Setup flow particles along paths
 function initParticles() {
     state.particles = [];
-    const maxParticles = Math.min(100, state.activeRoutes.length);
+    const maxParticles = Math.min(120, state.activeRoutes.length);
     
     // Select subset of routes to spawn particles along
     const indices = [];
@@ -791,8 +877,8 @@ function initParticles() {
         state.particles.push({
             route: r,
             progress: Math.random(), // distribute positions along paths initially
-            speed: 0.003 + Math.random() * 0.004,
-            color: state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleCyan
+            speed: 0.003 + Math.random() * 0.003,
+            color: r.type === 'connecting' ? 'rgba(0, 242, 254, 0.7)' : (state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleCyan)
         });
     });
 }
@@ -852,9 +938,6 @@ function drawFlightRoutes() {
     const ctx = state.ctx;
     const path = state.path;
     
-    // Optimize performance: use batching
-    ctx.lineWidth = state.activeFilter.type ? 1.5 : 0.8;
-    
     state.activeRoutes.forEach(r => {
         // Generate line geometry
         const lineGeo = {
@@ -869,19 +952,31 @@ function drawFlightRoutes() {
         path(lineGeo);
         
         if (state.activeFilter.type) {
-            // Selected routes are glowing and colorful
-            ctx.strokeStyle = state.activeFilter.type === 'location' ? themeColors.routeLocation : themeColors.routeActive;
-            ctx.shadowColor = state.activeFilter.type === 'location' ? themeColors.routeLocation : themeColors.routeActive;
-            ctx.shadowBlur = 4;
+            if (r.type === 'connecting') {
+                ctx.setLineDash([3, 4]); // Dashed line for layovers
+                ctx.strokeStyle = 'rgba(0, 242, 254, 0.25)'; // Semitransparent cyan
+                ctx.lineWidth = 0.9;
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.setLineDash([]); // Solid line for direct flights
+                ctx.strokeStyle = state.activeFilter.type === 'location' ? themeColors.routeLocation : themeColors.routeActive;
+                ctx.shadowColor = state.activeFilter.type === 'location' ? themeColors.routeLocation : themeColors.routeActive;
+                ctx.shadowBlur = 4;
+                ctx.lineWidth = 1.6;
+            }
         } else {
-            // Unselected global routes are faint and subtle
+            ctx.setLineDash([]);
             ctx.strokeStyle = themeColors.routeInactive;
             ctx.shadowBlur = 0;
+            ctx.lineWidth = 0.8;
         }
         
         ctx.stroke();
-        ctx.shadowBlur = 0; // Reset shadow for next drawings
+        ctx.shadowBlur = 0;
     });
+    
+    // Always reset line dash for other drawings
+    ctx.setLineDash([]);
 }
 
 function drawParticles() {
