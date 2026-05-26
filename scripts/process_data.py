@@ -119,6 +119,9 @@ def main():
     for row in reader:
         if len(row) < 6:
             continue
+        # Skip codeshare routes (row[6] is codeshare indicator, usually 'Y')
+        if len(row) > 6 and row[6] == "Y":
+            continue
         al_iata = row[0]
         src_iata = row[2]
         dst_iata = row[4]
