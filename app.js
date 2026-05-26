@@ -221,13 +221,13 @@ async function loadData() {
         // Step 1: Load boundaries
         loaderText.innerText = "Loading global UN borders...";
         progressFill.style.width = "25%";
-        const geojsonRes = await fetch('data/countries.geojson');
+        const geojsonRes = await fetch('data/countries.geojson?v=' + Date.now());
         state.countriesGeoJSON = await geojsonRes.json();
         
         // Step 2: Load flight databases
         loaderText.innerText = "Indexing routes database...";
         progressFill.style.width = "60%";
-        const dataRes = await fetch('data/data.json');
+        const dataRes = await fetch('data/data.json?v=' + Date.now());
         const aerodata = await dataRes.json();
         
         state.airports = aerodata.airports;
@@ -586,6 +586,7 @@ function setAirlineFilter(iata) {
 }
 
 function setLocationFilter(apIdx) {
+    apIdx = parseInt(apIdx);
     const ap = state.airports[apIdx];
     if (!ap) return;
     
