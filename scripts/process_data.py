@@ -100,7 +100,15 @@ def main():
                 "routes": [] # routes stored as indices [src_idx, dst_idx]
             }
 
-    print(f"Successfully parsed {len(airlines_dict)} active airlines.")
+    # Inject manual active airlines that are missing or obsolete in the OpenFlights database
+    airlines_dict["BF"] = {
+        "name": "French Bee",
+        "iata": "BF",
+        "routesCount": 0,
+        "routes": []
+    }
+
+    print(f"Successfully parsed {len(airlines_dict)} active airlines (including manual additions).")
 
     # 5. Parse Routes & Match
     print("Parsing and matching routes...")
@@ -126,6 +134,31 @@ def main():
 
             routes_list.append({
                 "airline": al_iata,
+                "src": src_ap["iata"],
+                "dst": dst_ap["iata"]
+            })
+
+    # Inject manual long-haul routes for French Bee (BF) connecting ORY, EWR, SFO, LAX, MIA, PPT, RUN
+    manual_routes = [
+        {"airline": "BF", "src": "ORY", "dst": "EWR"},
+        {"airline": "BF", "src": "EWR", "dst": "ORY"},
+        {"airline": "BF", "src": "ORY", "dst": "SFO"},
+        {"airline": "BF", "src": "SFO", "dst": "ORY"},
+        {"airline": "BF", "src": "ORY", "dst": "LAX"},
+        {"airline": "BF", "src": "LAX", "dst": "ORY"},
+        {"airline": "BF", "src": "ORY", "dst": "MIA"},
+        {"airline": "BF", "src": "MIA", "dst": "ORY"},
+        {"airline": "BF", "src": "SFO", "dst": "PPT"},
+        {"airline": "BF", "src": "PPT", "dst": "SFO"},
+        {"airline": "BF", "src": "ORY", "dst": "RUN"},
+        {"airline": "BF", "src": "RUN", "dst": "ORY"}
+    ]
+    for mr in manual_routes:
+        if mr["src"] in airports_dict and mr["dst"] in airports_dict:
+            src_ap = airports_dict[mr["src"]]
+            dst_ap = airports_dict[mr["dst"]]
+            routes_list.append({
+                "airline": mr["airline"],
                 "src": src_ap["iata"],
                 "dst": dst_ap["iata"]
             })
