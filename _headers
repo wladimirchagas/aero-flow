@@ -1,0 +1,22 @@
+# AeroFlow — Netlify / Cloudflare Pages / Vercel headers
+# Sets long-term cache headers for immutable assets and enables Brotli/gzip
+
+# Data files: cache 7 days (version-keyed via ?v=1 in JS)
+/data/data.json
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+  Content-Type: application/json; charset=utf-8
+
+/data/countries.geojson
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+  Content-Type: application/json; charset=utf-8
+
+# App JS & CSS: cache 1 day (no content hashing on this static build)
+/app.js
+  Cache-Control: public, max-age=86400
+
+/index.css
+  Cache-Control: public, max-age=86400
+
+# HTML: no cache (always fetch latest)
+/index.html
+  Cache-Control: no-cache
