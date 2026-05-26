@@ -171,9 +171,9 @@ def main():
         airports_dict[r["src"]]["flightsCount"] += 1
         airports_dict[r["dst"]]["flightsCount"] += 1
 
-    # Extract unique airport records (avoiding double records from our id/iata mapping)
-    unique_airports = list(set(id(v) for v in airports_dict.values()))
-    unique_airports = [v for v in airports_dict.values() if id(v) in unique_airports]
+    # Extract unique airport records (avoiding duplicates from double ID/IATA indexing)
+    # Since only original airport IDs are purely numeric strings (digits), filtering by digits isolates them!
+    unique_airports = [v for k, v in airports_dict.items() if k.isdigit()]
     
     # Sort by activity count and slice top 1800 airports
     unique_airports.sort(key=lambda x: x["flightsCount"], reverse=True)
