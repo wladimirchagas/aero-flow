@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AeroFlow - Global Flight Connections Map</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Style Sheets -->
+    <link rel="stylesheet" href="index.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <!-- Full-screen Canvas for Globe/Map -->
+    <div class="canvas-container">
+        <canvas id="mapCanvas"></canvas>
+    </div>
+
+    <!-- UI Overlay Wrapper -->
+    <div class="ui-overlay">
+        
+        <!-- Sidebar Navigation & Filters -->
+        <aside class="sidebar glass" id="sidebar-panel">
+            <header class="app-header">
+                <div class="logo-area">
+                    <div class="logo-icon">
+                        <i data-lucide="plane-takeoff"></i>
+                    </div>
+                    <h1>AeroFlow</h1>
+                </div>
+                <p class="tagline">Global Flight Connections Map</p>
+                <div class="badge">UN Sovereign Borders</div>
+            </header>
+
+            <main class="control-sections">
+                
+                <!-- Filter Section -->
+                <section class="control-group">
+                    <h2 class="section-title"><i data-lucide="sliders-horizontal"></i> Network Filters</h2>
+                    
+                    <!-- Filter Mode Tabs -->
+                    <div class="tabs" role="tablist">
+                        <button class="tab-btn active" id="tab-airline" role="tab" aria-selected="true">Airline</button>
+                        <button class="tab-btn" id="tab-location" role="tab" aria-selected="false">Location</button>
+                    </div>
+
+                    <!-- Airline Search Input -->
+                    <div class="search-box-container active" id="search-airline-container">
+                        <div class="input-wrapper">
+                            <i data-lucide="search" class="search-icon"></i>
+                            <input type="text" id="airline-search" placeholder="Search airline (e.g. Qantas, French Bee)..." autocomplete="off">
+                            <button class="clear-input-btn" id="clear-airline" style="display: none;">&times;</button>
+                        </div>
+                        <!-- Autocomplete Suggestions -->
+                        <div class="autocomplete-list" id="airline-suggestions"></div>
+                    </div>
+
+                    <!-- Location Search Input -->
+                    <div class="search-box-container" id="search-location-container">
+                        <div class="input-wrapper">
+                            <i data-lucide="map-pin" class="search-icon"></i>
+                            <input type="text" id="location-search" placeholder="Search airport or city (e.g. Paris, Melbourne)..." autocomplete="off">
+                            <button class="clear-input-btn" id="clear-location" style="display: none;">&times;</button>
+                        </div>
+                        <!-- Autocomplete Suggestions -->
+                        <div class="autocomplete-list" id="location-suggestions"></div>
+                    </div>
+
+                    <!-- Active Filter Pill -->
+                    <div class="active-pill" id="active-filter-pill" style="display: none;">
+                        <span class="pill-text" id="filter-pill-label">Selected: Qantas</span>
+                        <button class="pill-close" id="filter-pill-close"><i data-lucide="x"></i></button>
+                    </div>
+                </section>
+
+                <!-- Statistics Panel -->
+                <section class="control-group stats-group">
+                    <h2 class="section-title"><i data-lucide="bar-chart-3"></i> Statistics Overview</h2>
+                    <div class="stats-panel" id="stats-panel">
+                        <div class="stat-card">
+                            <span class="stat-label">Connected Airports</span>
+                            <span class="stat-val" id="stat-airports">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Total Routes</span>
+                            <span class="stat-val" id="stat-routes">0</span>
+                        </div>
+                        <div class="stat-card" id="stat-extra-card">
+                            <span class="stat-label" id="stat-extra-label">Airlines Indexed</span>
+                            <span class="stat-val" id="stat-extra-value">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stats-extended" id="stats-details">
+                        <p class="stats-desc" id="stats-desc-text">
+                            Showing the global commercial flights network. Search and select an airline or an airport above to analyze specific routes and connectivity hubs.
+                        </p>
+                        <div class="sub-hubs-list" id="top-hubs-container" style="display: none;">
+                            <h3>Top Connected Hubs</h3>
+                            <ul id="top-hubs-list"></ul>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Projection Selection -->
+                <section class="control-group">
+                    <h2 class="section-title"><i data-lucide="globe"></i> Earth Projection</h2>
+                    <div class="projection-toggle">
+                        <button class="proj-btn active" id="btn-globe" data-proj="globe">
+                            <i data-lucide="orbit"></i>
+                            <span>3D Globe</span>
+                        </button>
+                        <button class="proj-btn" id="btn-flat" data-proj="flat">
+                            <i data-lucide="map"></i>
+                            <span>Equal Earth 2D</span>
+                        </button>
+                    </div>
+                    <p class="proj-info">
+                        <i data-lucide="info" class="inline-icon"></i> 
+                        <span id="projection-info-text">Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.</span>
+                    </p>
+                </section>
+
+            </main>
+
+            <footer class="app-footer">
+                <p>Data sourced from OpenFlights & Natural Earth.</p>
+                <p class="disclaimer">UN sovereignty guidelines applied to borders.</p>
+            </footer>
+        </aside>
+
+        <!-- Dynamic Hover Tooltip -->
+        <div class="tooltip" id="map-tooltip" style="display: none;"></div>
+
+        <!-- Floating Map Controls (Top Right) -->
+        <div class="floating-controls">
+            <button class="control-btn" id="ctrl-zoom-in" title="Zoom In"><i data-lucide="plus"></i></button>
+            <button class="control-btn" id="ctrl-zoom-out" title="Zoom Out"><i data-lucide="minus"></i></button>
+            <button class="control-btn" id="ctrl-reset" title="Reset Camera"><i data-lucide="refresh-cw"></i></button>
+            <button class="control-btn active" id="ctrl-auto-rotate" title="Toggle Auto-Rotation"><i data-lucide="play"></i></button>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loading-screen">
+            <div class="loader-content">
+                <div class="plane-spinner">
+                    <i data-lucide="plane"></i>
+                </div>
+                <div class="loader-text">Loading Aerodata...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- D3.js Library -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <!-- Application Logic -->
+    <script src="app.js"></script>
+</body>
+</html>
