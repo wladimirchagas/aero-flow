@@ -73,9 +73,18 @@ const themeColors = {
 
 // Initialize Application on Window Load
 window.addEventListener('DOMContentLoaded', () => {
-    initCanvas();
-    initUI();
-    loadData();
+    try {
+        initCanvas();
+        initUI();
+        loadData();
+    } catch (err) {
+        console.error("Critical initialization failure:", err);
+        const loader = document.getElementById('loader-text');
+        if (loader) {
+            loader.innerText = "Startup Error: " + err.message;
+            loader.style.color = "#ff3377";
+        }
+    }
     
     // Resize handler
     window.addEventListener('resize', handleResize);
