@@ -124,18 +124,18 @@
                 <section class="control-group">
                     <h2 class="section-title"><i data-lucide="globe"></i> Earth Projection</h2>
                     <div class="projection-toggle">
-                        <button class="proj-btn active" id="btn-globe" data-proj="globe">
+                        <button class="proj-btn" id="btn-globe" data-proj="globe">
                             <i data-lucide="orbit"></i>
                             <span>3D Globe</span>
                         </button>
-                        <button class="proj-btn" id="btn-flat" data-proj="flat">
+                        <button class="proj-btn active" id="btn-flat" data-proj="flat">
                             <i data-lucide="map"></i>
                             <span>Equal Earth 2D</span>
                         </button>
                     </div>
                     <p class="proj-info">
                         <i data-lucide="info" class="inline-icon"></i> 
-                        <span id="projection-info-text">Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.</span>
+                        <span id="projection-info-text">Equal Earth projection: A true-to-earth flat projection showing highly accurate sizes of all landmasses. Drag to pan, scroll to zoom.</span>
                     </p>
                 </section>
 
@@ -155,7 +155,7 @@
             <button class="control-btn" id="ctrl-zoom-in" title="Zoom In"><i data-lucide="plus"></i></button>
             <button class="control-btn" id="ctrl-zoom-out" title="Zoom Out"><i data-lucide="minus"></i></button>
             <button class="control-btn" id="ctrl-reset" title="Reset Camera"><i data-lucide="refresh-cw"></i></button>
-            <button class="control-btn active" id="ctrl-auto-rotate" title="Toggle Auto-Rotation"><i data-lucide="play"></i></button>
+            <button class="control-btn" id="ctrl-auto-rotate" title="Toggle Auto-Rotation"><i data-lucide="pause"></i></button>
         </div>
 
         <!-- Loading Overlay -->

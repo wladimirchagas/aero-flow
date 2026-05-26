@@ -9,7 +9,7 @@ const state = {
     routesCount: 0,
     
     // Projections & Rendering
-    projectionType: 'globe', // 'globe' or 'flat'
+    projectionType: 'flat', // 'globe' or 'flat'
     projection: null,
     path: null,
     canvas: null,
@@ -32,7 +32,7 @@ const state = {
     dragTranslationStart: [0, 0],
 
     // Animation control
-    autoRotate: true,
+    autoRotate: false,
     rotationSpeed: 0.1, // degrees per frame
     lastFrameTime: 0,
     animFrameId: null,
