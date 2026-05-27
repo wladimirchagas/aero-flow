@@ -57,6 +57,7 @@ const state = {
     activeRoutes: [],
     // PERF: pre-built GeoJSON features for active routes (rebuilt only on filter change)
     activeRouteFeatures: [],
+    activeAirportsSet: null,
     particles: [], // animating planes
     selectedAirportIndex: null,
     hoveredItem: null, // airport or route under cursor
@@ -833,6 +834,13 @@ function buildRouteFeatures() {
         },
         properties: { routeType: r.type, filterType: state.activeFilter.type }
     }));
+
+    // Cache the set of active airports (connected to flight paths)
+    state.activeAirportsSet = new Set();
+    state.activeRoutes.forEach(r => {
+        if (r.src) state.activeAirportsSet.add(r.src);
+        if (r.dst) state.activeAirportsSet.add(r.dst);
+    });
 }
 
 // Filters implementation
@@ -1518,39 +1526,73 @@ function drawFlightRoutes() {
     const themeColors = getThemeColors();
     const hasFilter = !!state.activeFilter.type;
 
+    const isP2P = state.selectedAirportIndex !== null && state.locationToIndex !== null;
+    const fromAp = isP2P ? state.airports[state.selectedAirportIndex] : null;
+    const toAp = isP2P ? state.airports[state.locationToIndex] : null;
+
     // PERF: separate routes into two buckets (glow / no-glow) and draw each bucket
     // in a single save/restore block to minimise Canvas state changes.
-    // Bucket A: inactive / connecting (no shadow blur)
-    // Bucket B: active direct (shadow glow)
+    // Bucket A: inactive / connecting / dashed routes (no shadow blur)
+    // Bucket B: active direct solid routes (shadow glow)
 
-    // --- Bucket A: 1-stop connecting routes (yellow dashed, no glow) ---
+    // --- Bucket A: 1-stop connecting / dashed routes (no glow) ---
     ctx.save();
     ctx.shadowBlur = 0;
 
     state.activeRouteFeatures.forEach((feat, i) => {
         const r = state.activeRoutes[i];
-        const isConnecting = r.type === 'connecting';
 
-        if (!hasFilter || isConnecting) {
-            if (isConnecting) {
+        if (isP2P) {
+            const isDirectP2P = fromAp && toAp && (
+                (r.src.iata === fromAp.iata && r.dst.iata === toAp.iata) ||
+                (r.src.iata === toAp.iata && r.dst.iata === fromAp.iata)
+            );
+            if (isDirectP2P) {
+                // Will draw this in Bucket B (solid green with glow)
+                return;
+            }
+
+            if (r.type === 'direct') {
+                // Leg 1: from → hub (dashed green line)
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = themeColors.routeDirect;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                path(feat);
+                ctx.stroke();
+            } else if (r.type === 'connecting') {
+                // Leg 2: hub → to (dashed yellow line)
                 ctx.setLineDash([5, 6]);
                 ctx.strokeStyle = themeColors.routeConnectingStroke;
                 ctx.lineWidth = 1.2;
-            } else {
-                ctx.setLineDash([]);
-                ctx.strokeStyle = themeColors.routeInactive;
-                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                path(feat);
+                ctx.stroke();
             }
-            ctx.beginPath();
-            path(feat);
-            ctx.stroke();
+        } else {
+            const isConnecting = r.type === 'connecting';
+
+            if (!hasFilter || isConnecting) {
+                if (isConnecting) {
+                    ctx.setLineDash([5, 6]);
+                    ctx.strokeStyle = themeColors.routeConnectingStroke;
+                    ctx.lineWidth = 1.2;
+                } else {
+                    ctx.setLineDash([]);
+                    ctx.strokeStyle = themeColors.routeInactive;
+                    ctx.lineWidth = 0.8;
+                }
+                ctx.beginPath();
+                path(feat);
+                ctx.stroke();
+            }
         }
     });
 
     ctx.setLineDash([]);
     ctx.restore();
 
-    // --- Bucket B: direct routes (green solid, with glow) ---
+    // --- Bucket B: active direct solid routes (green solid, with glow) ---
     if (hasFilter) {
         ctx.save();
         ctx.shadowColor = themeColors.routeDirectGlow;
@@ -1561,10 +1603,23 @@ function drawFlightRoutes() {
 
         state.activeRouteFeatures.forEach((feat, i) => {
             const r = state.activeRoutes[i];
-            if (!r.type || r.type === 'direct') {
-                ctx.beginPath();
-                path(feat);
-                ctx.stroke();
+            
+            if (isP2P) {
+                const isDirectP2P = fromAp && toAp && (
+                    (r.src.iata === fromAp.iata && r.dst.iata === toAp.iata) ||
+                    (r.src.iata === toAp.iata && r.dst.iata === fromAp.iata)
+                );
+                if (isDirectP2P) {
+                    ctx.beginPath();
+                    path(feat);
+                    ctx.stroke();
+                }
+            } else {
+                if (!r.type || r.type === 'direct') {
+                    ctx.beginPath();
+                    path(feat);
+                    ctx.stroke();
+                }
             }
         });
 
@@ -1623,8 +1678,6 @@ function drawAirports() {
     const themeColors = getThemeColors();
     const centerLonLat = [-state.rotation[0], -state.rotation[1]];
 
-    const limit = state.activeFilter.type ? state.airports.length : 150;
-
     // PERF: draw selected airport pulse halo separately with shadow, then batch the rest
     // First pass: all non-selected airports (no shadow)
     ctx.save();
@@ -1636,10 +1689,14 @@ function drawAirports() {
             : themeColors.airportBase;
     const dotRadius = state.activeFilter.type ? 2 : 1.5;
 
+    const limit = state.airports.length;
     for (let i = 0; i < limit; i++) {
         const ap = state.airports[i];
         if (state.selectedAirportIndex === i) continue;
         if (state.locationToIndex === i) continue;
+
+        // Skip airports that are not connected to active flight paths
+        if (state.activeAirportsSet && !state.activeAirportsSet.has(ap)) continue;
 
         if (state.projectionType === 'globe') {
             const dist = d3.geoDistance(centerLonLat, [ap.lon, ap.lat]);
@@ -1705,9 +1762,12 @@ function handleHoverProximity(e) {
     let closestAirport = null;
     let minDist = 8; // detection threshold in pixels
 
-    const scanLimit = state.activeFilter.type ? state.airports.length : 200;
+    const scanLimit = state.airports.length;
     for (let i = 0; i < scanLimit; i++) {
         const ap = state.airports[i];
+
+        // Skip airports that are not connected to active flight paths
+        if (state.activeAirportsSet && !state.activeAirportsSet.has(ap)) continue;
 
         if (state.projectionType === 'globe') {
             const dist = d3.geoDistance(centerLonLat, [ap.lon, ap.lat]);
