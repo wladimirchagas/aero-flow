@@ -85,12 +85,18 @@ const themeColors = {
     routeLocationGlow: 'rgba(255, 51, 119, 0.4)',
     routeAirline: '#f5a623',          // amber-gold: airline filter lines
     routeAirlineGlow: 'rgba(245, 166, 35, 0.4)',
+    routeDirect: '#39e07a',           // green: direct connections
+    routeDirectGlow: 'rgba(57, 224, 122, 0.45)',
+    routeConnecting: '#f5e642',       // yellow: 1-stop connections
+    routeConnectingGlow: 'rgba(245, 230, 66, 0.4)',
     airportBase: '#7952f5',
     airportGlow: 'rgba(121, 82, 245, 0.5)',
     airportActive: '#00f2fe',
     particleCyan: '#00f2fe',
     particlePink: '#ff3377',
-    particleAirline: '#f5a623'        // amber-gold: particles on airline routes
+    particleAirline: '#f5a623',       // amber-gold: particles on airline routes
+    particleDirect: '#39e07a',        // green: direct connection particles
+    particleConnecting: '#f5e642'     // yellow: 1-stop connection particles
 };
 
 // Initialize Application on Window Load
@@ -905,8 +911,8 @@ function initParticles() {
             progress: Math.random(),
             speed: 0.003 + Math.random() * 0.003,
             color: r.type === 'connecting'
-                ? 'rgba(148, 103, 255, 0.75)' // violet for 1-stop particles
-                : (state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleAirline)
+                ? themeColors.particleConnecting  // yellow for 1-stop particles
+                : themeColors.particleDirect      // green for direct particles
         });
     });
 
@@ -973,7 +979,7 @@ function drawFlightRoutes() {
     // Bucket A: inactive / connecting (no shadow blur)
     // Bucket B: active direct (shadow glow)
 
-    // --- Bucket A: no shadow ---
+    // --- Bucket A: 1-stop connecting routes (yellow dashed, no glow) ---
     ctx.save();
     ctx.shadowBlur = 0;
 
@@ -984,7 +990,7 @@ function drawFlightRoutes() {
         if (!hasFilter || isConnecting) {
             if (isConnecting) {
                 ctx.setLineDash([5, 6]);
-                ctx.strokeStyle = 'rgba(148, 103, 255, 0.55)';
+                ctx.strokeStyle = 'rgba(245, 230, 66, 0.55)'; // yellow dashes
                 ctx.lineWidth = 1.2;
             } else {
                 ctx.setLineDash([]);
@@ -1000,12 +1006,12 @@ function drawFlightRoutes() {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // --- Bucket B: glow routes (active direct with filter) ---
+    // --- Bucket B: direct routes (green solid, with glow) ---
     if (hasFilter) {
         ctx.save();
-        ctx.shadowColor = isLocation ? themeColors.routeLocation : themeColors.routeAirline;
-        ctx.shadowBlur = 4;
-        ctx.strokeStyle = isLocation ? themeColors.routeLocation : themeColors.routeAirline;
+        ctx.shadowColor = themeColors.routeDirectGlow;
+        ctx.shadowBlur = 5;
+        ctx.strokeStyle = themeColors.routeDirect;
         ctx.lineWidth = 1.6;
         ctx.setLineDash([]);
 
