@@ -995,16 +995,16 @@ function setLocationFilter(apIdx) {
             routesByDest[destIata].push(r);
         });
 
-        // Keep up to 3 best paths (sorted by hub traffic) for each unique destination
+        // Keep up to 8 best paths (sorted by hub traffic) for each unique destination
         const cappedRoutes = [];
         Object.values(routesByDest).forEach(routes => {
             routes.sort((a, b) => b.src.flightsCount - a.src.flightsCount);
-            cappedRoutes.push(...routes.slice(0, 3));
+            cappedRoutes.push(...routes.slice(0, 8));
         });
 
-        // Sort by destination traffic and slice at 600 to show comprehensive intercontinental connections
+        // Sort by destination traffic and slice at 1000 to show comprehensive intercontinental connections
         cappedRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...cappedRoutes.slice(0, 600));
+        state.activeRoutes.push(...cappedRoutes.slice(0, 1000));
     }
 
     // PERF: pre-build route geometry
