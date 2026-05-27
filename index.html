@@ -62,15 +62,48 @@
                         <div class="autocomplete-list" id="airline-suggestions"></div>
                     </div>
 
-                    <!-- Location Search Input -->
+                    <!-- Location Search Inputs -->
                     <div class="search-box-container" id="search-location-container">
+                        <!-- FROM airport -->
+                        <div class="loc-field-label"><i data-lucide="plane-takeoff" class="loc-label-icon"></i>From</div>
                         <div class="input-wrapper">
                             <i data-lucide="map-pin" class="search-icon"></i>
-                            <input type="text" id="location-search" placeholder="Search airport or city (e.g. Paris, Melbourne)..." autocomplete="off">
+                            <input type="text" id="location-search" placeholder="Search airport or city (e.g. Paris)..." autocomplete="off">
                             <button class="clear-input-btn" id="clear-location" style="display: none;">&times;</button>
                         </div>
-                        <!-- Autocomplete Suggestions -->
+                        <!-- Autocomplete Suggestions (From) -->
                         <div class="autocomplete-list" id="location-suggestions"></div>
+
+                        <!-- Selected From chip -->
+                        <div class="loc-selected-chip" id="loc-from-chip" style="display: none;">
+                            <i data-lucide="map-pin" class="chip-icon"></i>
+                            <span id="loc-from-chip-label"></span>
+                            <button class="chip-clear" id="loc-from-clear">&times;</button>
+                        </div>
+
+                        <!-- Connector arrow -->
+                        <div class="loc-connector">
+                            <span class="loc-connector-line"></span>
+                            <i data-lucide="arrow-down" class="loc-connector-icon"></i>
+                            <span class="loc-connector-line"></span>
+                        </div>
+
+                        <!-- TO airport (optional) -->
+                        <div class="loc-field-label loc-field-label--to"><i data-lucide="plane-landing" class="loc-label-icon"></i>To <span class="optional-tag">optional</span></div>
+                        <div class="input-wrapper">
+                            <i data-lucide="navigation" class="search-icon"></i>
+                            <input type="text" id="location-to-search" placeholder="Destination airport or city..." autocomplete="off">
+                            <button class="clear-input-btn" id="clear-location-to" style="display: none;">&times;</button>
+                        </div>
+                        <!-- Autocomplete Suggestions (To) -->
+                        <div class="autocomplete-list" id="location-to-suggestions"></div>
+
+                        <!-- Selected To chip -->
+                        <div class="loc-selected-chip loc-selected-chip--to" id="loc-to-chip" style="display: none;">
+                            <i data-lucide="navigation" class="chip-icon"></i>
+                            <span id="loc-to-chip-label"></span>
+                            <button class="chip-clear" id="loc-to-clear">&times;</button>
+                        </div>
                     </div>
 
                     <!-- Connection Type Filter -->
@@ -153,6 +186,12 @@
 
         <!-- Dynamic Hover Tooltip -->
         <div class="tooltip" id="map-tooltip" style="display: none;"></div>
+
+        <!-- Theme Toggle (sticky, top-right) -->
+        <button id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle light / dark mode">
+            <i data-lucide="moon" class="theme-icon" id="theme-icon"></i>
+            <span class="theme-label" id="theme-label">Dark</span>
+        </button>
 
         <!-- Floating Map Controls (Top Right) -->
         <div class="floating-controls">

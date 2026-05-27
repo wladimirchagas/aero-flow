@@ -5,12 +5,23 @@
     --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-    /* Theme Palette - Deep Space Dark Mode */
+    /* Theme Palette — Deep Space (default dark) */
     --color-bg-base: #06040a;
     --color-bg-space: radial-gradient(circle at 50% 50%, #0e091d 0%, #050308 100%);
     --color-glass-bg: rgba(10, 8, 18, 0.65);
     --color-glass-border: rgba(255, 255, 255, 0.08);
     --color-glass-highlight: rgba(255, 255, 255, 0.03);
+    --color-input-bg: rgba(0, 0, 0, 0.35);
+    --color-input-focus-bg: rgba(0, 0, 0, 0.5);
+    --color-autocomplete-bg: rgba(18, 15, 28, 0.95);
+    --color-stat-card-bg: rgba(0, 0, 0, 0.25);
+    --color-conn-btn-bg: rgba(0, 0, 0, 0.2);
+    --color-tabs-bg: rgba(0, 0, 0, 0.25);
+    --color-tooltip-bg: rgba(8, 6, 15, 0.9);
+    --color-loading-bg: #06040a;
+    --color-scrollbar-thumb: rgba(255, 255, 255, 0.08);
+    --color-scrollbar-thumb-hover: rgba(255, 255, 255, 0.15);
+    --color-sidebar-shadow: rgba(0, 0, 0, 0.5);
 
     /* Brand Accents (Harmonious Neons) */
     --color-brand: #7952f5;
@@ -29,6 +40,39 @@
     /* Layout values */
     --sidebar-width: 380px;
     --transition-smooth: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    --transition-theme: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* ── Light Theme Overrides ───────────────────────────────────── */
+html[data-theme="light"] {
+    --color-bg-base: #eef1f7;
+    --color-bg-space: radial-gradient(circle at 50% 50%, #dde4f0 0%, #eef1f7 100%);
+    --color-glass-bg: rgba(255, 255, 255, 0.72);
+    --color-glass-border: rgba(0, 0, 0, 0.08);
+    --color-glass-highlight: rgba(0, 0, 0, 0.02);
+    --color-input-bg: rgba(255, 255, 255, 0.8);
+    --color-input-focus-bg: rgba(255, 255, 255, 0.95);
+    --color-autocomplete-bg: rgba(245, 247, 252, 0.98);
+    --color-stat-card-bg: rgba(255, 255, 255, 0.5);
+    --color-conn-btn-bg: rgba(255, 255, 255, 0.4);
+    --color-tabs-bg: rgba(0, 0, 0, 0.06);
+    --color-tooltip-bg: rgba(240, 243, 250, 0.97);
+    --color-loading-bg: #eef1f7;
+    --color-scrollbar-thumb: rgba(0, 0, 0, 0.12);
+    --color-scrollbar-thumb-hover: rgba(0, 0, 0, 0.22);
+    --color-sidebar-shadow: rgba(0, 0, 0, 0.12);
+
+    --color-brand: #6040e0;
+    --color-brand-glow: rgba(96, 64, 224, 0.3);
+    --color-cyan: #0088bb;
+    --color-cyan-glow: rgba(0, 136, 187, 0.3);
+    --color-pink: #d6004a;
+    --color-pink-glow: rgba(214, 0, 74, 0.25);
+    --color-gold: #c47a00;
+
+    --color-text-primary: #1a1630;
+    --color-text-secondary: #4e4870;
+    --color-text-muted: #8e89a8;
 }
 
 /* Base Resets */
@@ -50,6 +94,7 @@ body {
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: var(--transition-theme);
 }
 
 /* Fullscreen Canvas Container */
@@ -93,9 +138,9 @@ canvas:active {
     display: flex;
     flex-direction: column;
     pointer-events: auto; /* Enable clicks on sidebar */
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+    box-shadow: 10px 0 30px var(--color-sidebar-shadow);
     border-right: 1px solid var(--color-glass-border);
-    transition: var(--transition-smooth);
+    transition: var(--transition-smooth), var(--transition-theme);
 }
 
 .glass {
@@ -186,12 +231,12 @@ canvas:active {
 }
 
 .control-sections::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--color-scrollbar-thumb);
     border-radius: 3px;
 }
 
 .control-sections::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: var(--color-scrollbar-thumb-hover);
 }
 
 /* Section Styling */
@@ -225,7 +270,7 @@ canvas:active {
 /* Filter Tab buttons */
 .tabs {
     display: flex;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--color-tabs-bg);
     border: 1px solid var(--color-glass-border);
     border-radius: 8px;
     padding: 2px;
@@ -262,7 +307,9 @@ canvas:active {
 }
 
 .search-box-container.active {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .input-wrapper {
@@ -284,7 +331,7 @@ canvas:active {
 
 input[type="text"] {
     width: 100%;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--color-input-bg);
     border: 1px solid var(--color-glass-border);
     border-radius: 8px;
     padding: 10px 12px 10px 38px;
@@ -297,8 +344,8 @@ input[type="text"] {
 
 input[type="text"]:focus {
     border-color: var(--color-brand);
-    box-shadow: 0 0 10px rgba(121, 82, 245, 0.15);
-    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 10px var(--color-brand-glow);
+    background: var(--color-input-focus-bg);
 }
 
 input[type="text"]:focus + .search-icon {
@@ -328,7 +375,7 @@ input[type="text"]:focus + .search-icon {
     top: 100%;
     left: 0;
     right: 0;
-    background: rgba(18, 15, 28, 0.95);
+    background: var(--color-autocomplete-bg);
     backdrop-filter: blur(12px);
     border: 1px solid var(--color-glass-border);
     border-radius: 8px;
@@ -336,7 +383,7 @@ input[type="text"]:focus + .search-icon {
     max-height: 220px;
     overflow-y: auto;
     z-index: 100;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 10px 25px var(--color-sidebar-shadow);
     display: none;
 }
 
@@ -449,8 +496,8 @@ input[type="text"]:focus + .search-icon {
 }
 
 .stat-card {
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.04);
+    background: var(--color-stat-card-bg);
+    border: 1px solid var(--color-glass-border);
     border-radius: 8px;
     padding: 10px;
     display: flex;
@@ -535,7 +582,7 @@ input[type="text"]:focus + .search-icon {
 
 .proj-btn {
     flex: 1;
-    background: rgba(0, 0, 0, 0.25);
+    background: var(--color-conn-btn-bg);
     border: 1px solid var(--color-glass-border);
     border-radius: 8px;
     padding: 10px;
@@ -601,6 +648,60 @@ input[type="text"]:focus + .search-icon {
     opacity: 0.7;
 }
 
+/* ── Theme Toggle Button ─────────────────────────────────────── */
+#theme-toggle {
+    position: fixed;
+    top: 18px;
+    right: 80px;
+    z-index: 500;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 14px 0 10px;
+    height: 36px;
+    border-radius: 20px;
+    background: var(--color-glass-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--color-glass-border);
+    color: var(--color-text-secondary);
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    box-shadow: 0 4px 20px var(--color-sidebar-shadow);
+    transition: var(--transition-smooth), background 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+    white-space: nowrap;
+}
+
+#theme-toggle:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-brand);
+    box-shadow: 0 4px 20px var(--color-brand-glow);
+    transform: translateY(-1px);
+}
+
+#theme-toggle:active {
+    transform: translateY(0);
+}
+
+#theme-toggle .theme-icon {
+    width: 16px;
+    height: 16px;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s ease;
+    flex-shrink: 0;
+}
+
+/* Spin icon on toggle */
+#theme-toggle.switching .theme-icon {
+    transform: rotate(180deg);
+}
+
+#theme-toggle .theme-label {
+    transition: opacity 0.2s ease;
+}
+
 /* Floating HUD Navigation Controls (Top Right) */
 .floating-controls {
     position: absolute;
@@ -625,13 +726,13 @@ input[type="text"]:focus + .search-icon {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    transition: var(--transition-smooth);
+    box-shadow: 0 4px 15px var(--color-sidebar-shadow);
+    transition: var(--transition-smooth), background 0.4s ease, border-color 0.4s ease;
 }
 
 .control-btn:hover {
     color: var(--color-text-primary);
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: var(--color-glass-border);
     transform: translateY(-2px);
 }
 
@@ -655,14 +756,14 @@ input[type="text"]:focus + .search-icon {
     position: absolute;
     pointer-events: none;
     z-index: 1000;
-    background: rgba(8, 6, 15, 0.9);
+    background: var(--color-tooltip-bg);
     backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid var(--color-glass-border);
     border-radius: 8px;
     padding: 8px 12px;
     font-size: 11px;
     color: var(--color-text-primary);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 20px var(--color-sidebar-shadow);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -700,7 +801,7 @@ input[type="text"]:focus + .search-icon {
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: #06040a;
+    background: var(--color-loading-bg);
     z-index: 10000;
     display: flex;
     align-items: center;
@@ -791,7 +892,7 @@ input[type="text"]:focus + .search-icon {
 }
 
 .conn-btn {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--color-conn-btn-bg);
     border: 1px solid var(--color-glass-border);
     border-radius: 6px;
     padding: 8px 12px;
@@ -823,4 +924,119 @@ input[type="text"]:focus + .search-icon {
     width: 12px;
     height: 12px;
     color: inherit;
+}
+
+/* ── Location From / To field layout ────────────────────────── */
+
+.loc-field-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 2px;
+}
+
+.loc-field-label--to {
+    color: var(--color-pink);
+    opacity: 0.85;
+}
+
+.loc-label-icon {
+    width: 11px;
+    height: 11px;
+}
+
+.optional-tag {
+    font-size: 9px;
+    text-transform: lowercase;
+    letter-spacing: 0;
+    background: rgba(255, 51, 119, 0.12);
+    border: 1px solid rgba(255, 51, 119, 0.25);
+    border-radius: 3px;
+    padding: 0 4px;
+    color: var(--color-pink);
+    opacity: 0.7;
+    margin-left: 2px;
+}
+
+/* Connector visual between From/To */
+.loc-connector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    margin: 2px 0;
+}
+
+.loc-connector-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+.loc-connector-icon {
+    width: 12px;
+    height: 12px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+}
+
+/* Selected-airport chip (shows after picking an airport) */
+.loc-selected-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 242, 254, 0.07);
+    border: 1px solid rgba(0, 242, 254, 0.2);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-cyan);
+    animation: chipIn 0.2s ease-out both;
+}
+
+.loc-selected-chip--to {
+    background: rgba(255, 51, 119, 0.07);
+    border-color: rgba(255, 51, 119, 0.2);
+    color: var(--color-pink);
+}
+
+@keyframes chipIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.chip-icon {
+    width: 11px;
+    height: 11px;
+    flex-shrink: 0;
+}
+
+.loc-selected-chip span {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chip-clear {
+    background: transparent;
+    border: none;
+    color: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0.6;
+    line-height: 1;
+    padding: 0 2px;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+}
+
+.chip-clear:hover {
+    opacity: 1;
 }

@@ -47,6 +47,7 @@ const state = {
         type: null, // 'airline' or 'location'
         value: null // airline IATA code or airport index
     },
+    locationToIndex: null,  // optional second airport for point-to-point mode
 
     // Render cache / animated items
     activeRoutes: [],
@@ -70,38 +71,73 @@ const state = {
     rotationAnimating: false,
 };
 
-// Colors (matching CSS variables)
-const themeColors = {
-    bgBase: '#06040a',
-    ocean: '#090615',
-    landFill: '#141022',
-    landStroke: '#251e3c',
-    graticule: '#1b162f',
-    unBorder: '#382b68',
-    routeInactive: 'rgba(121, 82, 245, 0.08)',
-    routeActive: '#00f2fe',
-    routeActiveGlow: 'rgba(0, 242, 254, 0.4)',
-    routeLocation: '#ff3377',
-    routeLocationGlow: 'rgba(255, 51, 119, 0.4)',
-    routeAirline: '#f5a623',          // amber-gold: airline filter lines
-    routeAirlineGlow: 'rgba(245, 166, 35, 0.4)',
-    routeDirect: '#39e07a',           // green: direct connections
-    routeDirectGlow: 'rgba(57, 224, 122, 0.45)',
-    routeConnecting: '#f5e642',       // yellow: 1-stop connections
-    routeConnectingGlow: 'rgba(245, 230, 66, 0.4)',
-    airportBase: '#7952f5',
-    airportGlow: 'rgba(121, 82, 245, 0.5)',
-    airportActive: '#00f2fe',
-    particleCyan: '#00f2fe',
-    particlePink: '#ff3377',
-    particleAirline: '#f5a623',       // amber-gold: particles on airline routes
-    particleDirect: '#39e07a',        // green: direct connection particles
-    particleConnecting: '#f5e642'     // yellow: 1-stop connection particles
-};
+// Canvas colour palettes — swapped on theme toggle
+function getThemeColors() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    if (isLight) {
+        return {
+            bgBase: '#dde4f0',
+            ocean: '#c8d5eb',
+            landFill: '#e8eef8',
+            landStroke: '#b0bcd8',
+            graticule: '#c5cfe6',
+            unBorder: '#99aace',
+            routeInactive: 'rgba(96, 64, 224, 0.07)',
+            routeActive: '#0088bb',
+            routeActiveGlow: 'rgba(0, 136, 187, 0.4)',
+            routeLocation: '#d6004a',
+            routeLocationGlow: 'rgba(214, 0, 74, 0.4)',
+            routeAirline: '#c47a00',
+            routeAirlineGlow: 'rgba(196, 122, 0, 0.4)',
+            routeDirect: '#1aaa50',
+            routeDirectGlow: 'rgba(26, 170, 80, 0.45)',
+            routeConnecting: '#b89000',
+            routeConnectingGlow: 'rgba(184, 144, 0, 0.4)',
+            routeConnectingStroke: 'rgba(184, 144, 0, 0.6)',
+            airportBase: '#6040e0',
+            airportGlow: 'rgba(96, 64, 224, 0.45)',
+            airportActive: '#0088bb',
+            particleCyan: '#0088bb',
+            particlePink: '#d6004a',
+            particleAirline: '#c47a00',
+            particleDirect: '#1aaa50',
+            particleConnecting: '#b89000'
+        };
+    }
+    return {
+        bgBase: '#06040a',
+        ocean: '#090615',
+        landFill: '#141022',
+        landStroke: '#251e3c',
+        graticule: '#1b162f',
+        unBorder: '#382b68',
+        routeInactive: 'rgba(121, 82, 245, 0.08)',
+        routeActive: '#00f2fe',
+        routeActiveGlow: 'rgba(0, 242, 254, 0.4)',
+        routeLocation: '#ff3377',
+        routeLocationGlow: 'rgba(255, 51, 119, 0.4)',
+        routeAirline: '#f5a623',
+        routeAirlineGlow: 'rgba(245, 166, 35, 0.4)',
+        routeDirect: '#39e07a',
+        routeDirectGlow: 'rgba(57, 224, 122, 0.45)',
+        routeConnecting: '#f5e642',
+        routeConnectingGlow: 'rgba(245, 230, 66, 0.4)',
+        routeConnectingStroke: 'rgba(245, 230, 66, 0.6)',
+        airportBase: '#7952f5',
+        airportGlow: 'rgba(121, 82, 245, 0.5)',
+        airportActive: '#00f2fe',
+        particleCyan: '#00f2fe',
+        particlePink: '#ff3377',
+        particleAirline: '#f5a623',
+        particleDirect: '#39e07a',
+        particleConnecting: '#f5e642'
+    };
+}
 
 // Initialize Application on Window Load
 window.addEventListener('DOMContentLoaded', () => {
     try {
+        initTheme();
         initCanvas();
         initUI();
         loadData();
@@ -118,6 +154,48 @@ window.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('resize', handleResize);
 });
 
+// Theme initialisation — reads localStorage, applies to html element, wires toggle button
+function initTheme() {
+    const saved = localStorage.getItem('aeroflow-theme') || 'dark';
+    applyTheme(saved, false);
+
+    const btn = document.getElementById('theme-toggle');
+    btn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        const next = current === 'dark' ? 'light' : 'dark';
+
+        // Brief spin animation on the icon
+        btn.classList.add('switching');
+        setTimeout(() => btn.classList.remove('switching'), 400);
+
+        applyTheme(next, true);
+    });
+}
+
+function applyTheme(theme, save) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (save) localStorage.setItem('aeroflow-theme', theme);
+
+    const icon = document.getElementById('theme-icon');
+    const label = document.getElementById('theme-label');
+
+    if (theme === 'light') {
+        icon.setAttribute('data-lucide', 'sun');
+        label.textContent = 'Light';
+    } else {
+        icon.setAttribute('data-lucide', 'moon');
+        label.textContent = 'Dark';
+    }
+
+    // Re-render icon (lucide may already be loaded)
+    if (window.lucide) lucide.createIcons({ nodes: [icon] });
+
+    // Repaint canvas with new colour palette
+    markDirty();
+    // Also re-spawn particles so they pick up new colours
+    if (state.activeRoutes.length) initParticles();
+}
+
 // Canvas Setup
 function initCanvas() {
     state.canvas = document.getElementById('mapCanvas');
@@ -131,6 +209,15 @@ function initCanvas() {
     state.graticuleGeometry = d3.geoGraticule()();
 }
 
+function updateBaseScales() {
+    const availableWidth = state.width > 768 ? state.width - 380 : state.width;
+    const refDimension = Math.min(availableWidth, state.height);
+    
+    // Calculate responsive base scales with sensible bounds to prevent overflow/too tiny views
+    state.scale.globe = Math.max(120, refDimension * 0.38);
+    state.scale.flat = Math.max(100, refDimension * 0.30);
+}
+
 function resizeCanvas() {
     state.width = window.innerWidth;
     state.height = window.innerHeight;
@@ -141,6 +228,9 @@ function resizeCanvas() {
 
     state.canvas.style.width = `${state.width}px`;
     state.canvas.style.height = `${state.height}px`;
+
+    // Calculate responsive base scales
+    updateBaseScales();
 
     // PERF: use setTransform instead of accumulating ctx.scale() on every resize
     state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -286,8 +376,28 @@ async function loadData() {
         // Lucide Icons activation
         lucide.createIcons();
 
-        // Initial filter setup to show default "global heartbeat" corridors
-        resetFilter();
+        // 1. Activate the Location Tab in the sidebar UI
+        activateLocationTab();
+
+        // 2. Pre-select Melbourne (Australia, IATA: MEL, index 139) as the absolute default
+        setLocationFilter(139);
+
+        // 3. Request user's physical location in the background
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const closestApIdx = getClosestAirport(lat, lon);
+                    setLocationFilter(closestApIdx);
+                },
+                (error) => {
+                    console.warn("Geolocation access denied or failed. Defaulting to Melbourne.", error);
+                    // Already defaulted to Melbourne, so no additional action is needed.
+                },
+                { timeout: 8000, enableHighAccuracy: false }
+            );
+        }
 
         // Complete loader
         progressFill.style.width = "100%";
@@ -346,13 +456,16 @@ function initUI() {
     // 2. Search Autocomplete
     const airInput = document.getElementById('airline-search');
     const locInput = document.getElementById('location-search');
+    const locToInput = document.getElementById('location-to-search');
 
     airInput.addEventListener('input', (e) => handleSearchInput('airline', e.target.value));
     locInput.addEventListener('input', (e) => handleSearchInput('location', e.target.value));
+    locToInput.addEventListener('input', (e) => handleSearchInput('location-to', e.target.value));
 
     // Clear input buttons
     const clearAir = document.getElementById('clear-airline');
     const clearLoc = document.getElementById('clear-location');
+    const clearLocTo = document.getElementById('clear-location-to');
 
     clearAir.addEventListener('click', () => {
         airInput.value = '';
@@ -364,6 +477,21 @@ function initUI() {
         locInput.value = '';
         clearLoc.style.display = 'none';
         hideSuggestions();
+    });
+
+    clearLocTo.addEventListener('click', () => {
+        locToInput.value = '';
+        clearLocTo.style.display = 'none';
+        hideSuggestions();
+    });
+
+    // Chip clear buttons
+    document.getElementById('loc-from-clear').addEventListener('click', () => {
+        clearLocationFrom();
+    });
+
+    document.getElementById('loc-to-clear').addEventListener('click', () => {
+        clearLocationTo();
     });
 
     // 3. Projections switching
@@ -448,7 +576,12 @@ function reapplyActiveFilter() {
     if (state.activeFilter.type === 'airline') {
         setAirlineFilter(state.activeFilter.value);
     } else if (state.activeFilter.type === 'location') {
-        setLocationFilter(state.activeFilter.value);
+        if (state.locationToIndex !== null) {
+            // Re-run point-to-point with current locationToIndex
+            applyPointToPointFilter(state.activeFilter.value, state.locationToIndex);
+        } else {
+            setLocationFilter(state.activeFilter.value);
+        }
     } else {
         resetFilter();
     }
@@ -474,8 +607,17 @@ function toggleAutoRotate(enabled) {
 
 // Autocomplete logic
 function handleSearchInput(type, query) {
-    const clearBtn = document.getElementById(type === 'airline' ? 'clear-airline' : 'clear-location');
-    const suggestList = document.getElementById(type === 'airline' ? 'airline-suggestions' : 'location-suggestions');
+    let clearBtnId, suggestListId;
+    if (type === 'airline') {
+        clearBtnId = 'clear-airline'; suggestListId = 'airline-suggestions';
+    } else if (type === 'location-to') {
+        clearBtnId = 'clear-location-to'; suggestListId = 'location-to-suggestions';
+    } else {
+        clearBtnId = 'clear-location'; suggestListId = 'location-suggestions';
+    }
+
+    const clearBtn = document.getElementById(clearBtnId);
+    const suggestList = document.getElementById(suggestListId);
 
     if (!query || query.trim().length < 2) {
         clearBtn.style.display = 'none';
@@ -508,7 +650,11 @@ function handleSearchInput(type, query) {
             }
         });
         matches.sort((a, b) => b.flightsCount - a.flightsCount);
-        renderLocationSuggestions(matches.slice(0, 6));
+        if (type === 'location-to') {
+            renderLocationToSuggestions(matches.slice(0, 6));
+        } else {
+            renderLocationSuggestions(matches.slice(0, 6));
+        }
     }
 }
 
@@ -580,9 +726,44 @@ function renderLocationSuggestions(matches) {
     list.style.display = 'block';
 }
 
+function renderLocationToSuggestions(matches) {
+    const list = document.getElementById('location-to-suggestions');
+    list.innerHTML = '';
+
+    if (matches.length === 0) {
+        list.innerHTML = `<div class="autocomplete-item"><span class="title">No airports found</span></div>`;
+        list.style.display = 'block';
+        return;
+    }
+
+    matches.forEach(ap => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item';
+        item.innerHTML = `
+            <span class="title">${ap.city} (${ap.iata})</span>
+            <div class="subtitle">
+                <span>${ap.name}</span>
+                <span class="sub-badge">${ap.flightsCount} flights</span>
+            </div>
+        `;
+
+        item.addEventListener('click', () => {
+            setLocationToFilter(ap.originalIndex);
+            hideSuggestions();
+            document.getElementById('location-to-search').value = '';
+            document.getElementById('clear-location-to').style.display = 'none';
+        });
+
+        list.appendChild(item);
+    });
+
+    list.style.display = 'block';
+}
+
 function hideSuggestions() {
     document.getElementById('airline-suggestions').style.display = 'none';
     document.getElementById('location-suggestions').style.display = 'none';
+    document.getElementById('location-to-suggestions').style.display = 'none';
 }
 
 // PERF: Pre-build GeoJSON features for active routes once on filter change,
@@ -689,6 +870,18 @@ function setLocationFilter(apIdx) {
     state.activeFilter = { type: 'location', value: apIdx };
     state.selectedAirportIndex = apIdx;
 
+    // Update From chip UI
+    const fromChip = document.getElementById('loc-from-chip');
+    document.getElementById('loc-from-chip-label').innerText = `${ap.city} (${ap.iata})`;
+    fromChip.style.display = 'flex';
+    lucide.createIcons({ nodes: [fromChip.querySelector('i')] });
+
+    // If a "To" airport is already selected, run point-to-point immediately
+    if (state.locationToIndex !== null) {
+        applyPointToPointFilter(apIdx, state.locationToIndex);
+        return;
+    }
+
     state.activeRoutes = [];
 
     // 1. Gather all direct routes first
@@ -748,7 +941,7 @@ function setLocationFilter(apIdx) {
 
     // UI Updates
     document.getElementById('active-filter-pill').style.display = 'flex';
-    document.getElementById('filter-pill-label').innerText = `Selected Location: ${ap.city} (${ap.iata})`;
+    document.getElementById('filter-pill-label').innerText = `Location: ${ap.city} (${ap.iata})`;
 
     document.getElementById('stat-airports').innerText = getUniqueAirportsCount(state.activeRoutes) - 1;
     document.getElementById('stat-routes').innerText = state.activeRoutes.length;
@@ -761,9 +954,197 @@ function setLocationFilter(apIdx) {
     markDirty();
 }
 
+// Called when user picks a "To" destination airport
+function setLocationToFilter(apIdx) {
+    apIdx = parseInt(apIdx);
+    const ap = state.airports[apIdx];
+    if (!ap) return;
+
+    state.locationToIndex = apIdx;
+
+    // Update To chip UI
+    const toChip = document.getElementById('loc-to-chip');
+    document.getElementById('loc-to-chip-label').innerText = `${ap.city} (${ap.iata})`;
+    toChip.style.display = 'flex';
+    lucide.createIcons({ nodes: [toChip.querySelector('i')] });
+
+    // If a "From" airport is already selected, apply point-to-point filter
+    if (state.activeFilter.type === 'location' && state.activeFilter.value !== null) {
+        applyPointToPointFilter(state.activeFilter.value, apIdx);
+    }
+    // else: wait for user to pick a From airport
+}
+
+// Compute and display routes between two specific airports (direct + 1-stop)
+function applyPointToPointFilter(fromIdx, toIdx) {
+    fromIdx = parseInt(fromIdx);
+    toIdx = parseInt(toIdx);
+    const fromAp = state.airports[fromIdx];
+    const toAp = state.airports[toIdx];
+    if (!fromAp || !toAp) return;
+
+    state.activeRoutes = [];
+
+    // --- Direct routes between fromIdx <-> toIdx ---
+    const directRoutes = [];
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            const isFromTo = (r[0] === fromIdx && r[1] === toIdx) || (r[0] === toIdx && r[1] === fromIdx);
+            if (isFromTo) {
+                directRoutes.push({
+                    src: state.airports[r[0]],
+                    dst: state.airports[r[1]],
+                    airline: alIata,
+                    type: 'direct'
+                });
+            }
+        });
+    });
+    state.activeRoutes.push(...directRoutes);
+
+    // --- 1-stop connection routes (always shown regardless of connectionType toggle) ---
+    // A 1-stop connection is: fromIdx → hub → toIdx (any airline each leg)
+    // Build set of hubs reachable from fromIdx
+    const fromHubs = new Map(); // hubIdx -> [{airline}]
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            if (r[0] === fromIdx && r[1] !== toIdx) {
+                if (!fromHubs.has(r[1])) fromHubs.set(r[1], []);
+                fromHubs.get(r[1]).push(alIata);
+            }
+            if (r[1] === fromIdx && r[0] !== toIdx) {
+                if (!fromHubs.has(r[0])) fromHubs.set(r[0], []);
+                fromHubs.get(r[0]).push(alIata);
+            }
+        });
+    });
+
+    // Find hubs that also connect to toIdx
+    const seenHubs = new Set();
+    const connectingLegs = []; // legs: from → hub, hub → to
+
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            let hubIdx = null;
+            // r goes hub → toIdx
+            if (r[1] === toIdx && fromHubs.has(r[0])) hubIdx = r[0];
+            // r goes toIdx → hub (undirected)
+            if (r[0] === toIdx && fromHubs.has(r[1])) hubIdx = r[1];
+
+            if (hubIdx !== null && !seenHubs.has(hubIdx)) {
+                seenHubs.add(hubIdx);
+                const hub = state.airports[hubIdx];
+                // Leg 1: from → hub
+                connectingLegs.push({
+                    src: fromAp, dst: hub,
+                    airline: (fromHubs.get(hubIdx) || [alIata])[0],
+                    type: 'connecting'
+                });
+                // Leg 2: hub → to
+                connectingLegs.push({
+                    src: hub, dst: toAp,
+                    airline: alIata,
+                    type: 'connecting'
+                });
+            }
+        });
+    });
+
+    // Sort hubs by traffic and cap
+    connectingLegs.sort((a, b) => (b.dst.flightsCount || 0) - (a.dst.flightsCount || 0));
+    state.activeRoutes.push(...connectingLegs.slice(0, 400));
+
+    // PERF: pre-build route geometry
+    buildRouteFeatures();
+
+    state.selectedAirportIndex = fromIdx;
+    focusCameraOnPoints([[fromAp.lon, fromAp.lat], [toAp.lon, toAp.lat]]);
+    initParticles();
+
+    const directCount = directRoutes.length;
+    const hubCount = seenHubs.size;
+
+    // UI Updates
+    document.getElementById('active-filter-pill').style.display = 'flex';
+    document.getElementById('filter-pill-label').innerText = `${fromAp.iata} → ${toAp.iata}`;
+
+    document.getElementById('stat-airports').innerText = hubCount + (directCount > 0 ? 0 : 0);
+    document.getElementById('stat-routes').innerText = state.activeRoutes.length;
+
+    document.getElementById('stat-extra-card').style.display = 'flex';
+    document.getElementById('stat-extra-label').innerText = "Direct Flights";
+    document.getElementById('stat-extra-value').innerText = directCount > 0 ? directCount : 'None';
+
+    // Description text
+    const descText = document.getElementById('stats-desc-text');
+    if (directCount > 0) {
+        descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}. ${hubCount} possible 1-stop connection hubs shown.`;
+    } else {
+        descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Showing ${hubCount} possible 1-stop connection hub${hubCount !== 1 ? 's' : ''}.`;
+    }
+
+    // Show hubs list
+    const topHubsContainer = document.getElementById('top-hubs-container');
+    const topHubsList = document.getElementById('top-hubs-list');
+    topHubsList.innerHTML = '';
+    topHubsContainer.querySelector('h3').innerText = '1-Stop Connection Hubs';
+
+    const sortedHubs = [...seenHubs]
+        .map(idx => state.airports[idx])
+        .sort((a, b) => (b.flightsCount || 0) - (a.flightsCount || 0))
+        .slice(0, 5);
+
+    sortedHubs.forEach(hub => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="hub-name">${hub.city} (${hub.iata})</span><span class="hub-count">via hub</span>`;
+        topHubsList.appendChild(li);
+    });
+
+    if (sortedHubs.length === 0) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="hub-name">No 1-stop hubs found</span>`;
+        topHubsList.appendChild(li);
+    }
+    topHubsContainer.style.display = 'block';
+
+    markDirty();
+}
+
+// Clear the From airport selection
+function clearLocationFrom() {
+    state.activeFilter = { type: null, value: null };
+    state.selectedAirportIndex = null;
+    document.getElementById('loc-from-chip').style.display = 'none';
+
+    // If To is still set, keep it but revert to a vanilla filter reset
+    if (state.locationToIndex !== null) {
+        // Apply single-location filter from the To side
+        const toIdx = state.locationToIndex;
+        state.locationToIndex = null;
+        document.getElementById('loc-to-chip').style.display = 'none';
+    }
+    resetFilter();
+}
+
+// Clear the To airport selection
+function clearLocationTo() {
+    state.locationToIndex = null;
+    document.getElementById('loc-to-chip').style.display = 'none';
+
+    // Re-apply single-airport filter for the From airport
+    if (state.activeFilter.type === 'location' && state.activeFilter.value !== null) {
+        setLocationFilter(state.activeFilter.value);
+    }
+}
+
 function resetFilter() {
     state.activeFilter = { type: null, value: null };
     state.selectedAirportIndex = null;
+    state.locationToIndex = null;
+
+    // Hide chips
+    document.getElementById('loc-from-chip').style.display = 'none';
+    document.getElementById('loc-to-chip').style.display = 'none';
 
     state.activeRoutes = [];
     let gatheredCount = 0;
@@ -803,6 +1184,47 @@ function resetFilter() {
     document.getElementById('top-hubs-container').style.display = 'none';
 
     markDirty();
+}
+
+// Helper to calculate the closest airport to a given lat/lon coordinate pair
+function getClosestAirport(lat, lon) {
+    let closestApIdx = 139; // Fallback to Melbourne (index 139)
+    let minDistance = Infinity;
+    
+    state.airports.forEach((ap, idx) => {
+        // Equirectangular distance approximation (fast and accurate enough for proximity)
+        const x = (ap.lon - lon) * Math.cos((ap.lat + lat) * Math.PI / 360);
+        const y = ap.lat - lat;
+        const dist = x * x + y * y;
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestApIdx = idx;
+        }
+    });
+    
+    return closestApIdx;
+}
+
+// Helper to programmatically activate the Location Tab in the UI Sidebar
+function activateLocationTab() {
+    state.activeTab = 'location';
+    
+    const tabAirline = document.getElementById('tab-airline');
+    const tabLocation = document.getElementById('tab-location');
+    const searchAirlineCont = document.getElementById('search-airline-container');
+    const searchLocationCont = document.getElementById('search-location-container');
+
+    if (tabAirline && tabLocation && searchAirlineCont && searchLocationCont) {
+        tabLocation.classList.add('active');
+        tabLocation.setAttribute('aria-selected', 'true');
+        tabAirline.classList.remove('active');
+        tabAirline.setAttribute('aria-selected', 'false');
+
+        searchLocationCont.classList.add('active');
+        searchAirlineCont.classList.remove('active');
+    }
+    
+    hideSuggestions();
 }
 
 // Focus D3 camera projection on specific set of points — instant snap, no animation
@@ -891,6 +1313,7 @@ function displayLocationAirlines(apIdx) {
 function initParticles() {
     state.particles = [];
     const maxParticles = Math.min(120, state.activeRoutes.length);
+    const colors = getThemeColors();
 
     const indices = [];
     for (let i = 0; i < state.activeRoutes.length; i++) indices.push(i);
@@ -911,8 +1334,8 @@ function initParticles() {
             progress: Math.random(),
             speed: 0.003 + Math.random() * 0.003,
             color: r.type === 'connecting'
-                ? themeColors.particleConnecting  // yellow for 1-stop particles
-                : themeColors.particleDirect      // green for direct particles
+                ? colors.particleConnecting
+                : colors.particleDirect
         });
     });
 
@@ -923,6 +1346,7 @@ function initParticles() {
 function render() {
     const ctx = state.ctx;
     const path = state.path;
+    const themeColors = getThemeColors();
 
     // 1. Clear Screen
     ctx.clearRect(0, 0, state.width, state.height);
@@ -971,8 +1395,8 @@ function render() {
 function drawFlightRoutes() {
     const ctx = state.ctx;
     const path = state.path;
+    const themeColors = getThemeColors();
     const hasFilter = !!state.activeFilter.type;
-    const isLocation = state.activeFilter.type === 'location';
 
     // PERF: separate routes into two buckets (glow / no-glow) and draw each bucket
     // in a single save/restore block to minimise Canvas state changes.
@@ -990,7 +1414,7 @@ function drawFlightRoutes() {
         if (!hasFilter || isConnecting) {
             if (isConnecting) {
                 ctx.setLineDash([5, 6]);
-                ctx.strokeStyle = 'rgba(245, 230, 66, 0.55)'; // yellow dashes
+                ctx.strokeStyle = themeColors.routeConnectingStroke;
                 ctx.lineWidth = 1.2;
             } else {
                 ctx.setLineDash([]);
@@ -1076,6 +1500,7 @@ function drawParticles() {
 function drawAirports() {
     const ctx = state.ctx;
     const proj = state.projection;
+    const themeColors = getThemeColors();
     const centerLonLat = [-state.rotation[0], -state.rotation[1]];
 
     const limit = state.activeFilter.type ? state.airports.length : 150;
@@ -1085,15 +1510,16 @@ function drawAirports() {
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.fillStyle = state.activeFilter.type === 'location'
-        ? themeColors.airportActive  // cyan dots on pink direct routes
+        ? themeColors.airportActive
         : state.activeFilter.type === 'airline'
-            ? themeColors.airportActive  // cyan dots — contrasts against amber route lines
+            ? themeColors.airportActive
             : themeColors.airportBase;
     const dotRadius = state.activeFilter.type ? 2 : 1.5;
 
     for (let i = 0; i < limit; i++) {
         const ap = state.airports[i];
-        if (state.selectedAirportIndex === i) continue; // drawn separately below
+        if (state.selectedAirportIndex === i) continue;
+        if (state.locationToIndex === i) continue;
 
         if (state.projectionType === 'globe') {
             const dist = d3.geoDistance(centerLonLat, [ap.lon, ap.lat]);
@@ -1109,28 +1535,38 @@ function drawAirports() {
     }
     ctx.restore();
 
-    // Second pass: selected airport with glow halo
-    if (state.selectedAirportIndex !== null) {
-        const ap = state.airports[state.selectedAirportIndex];
+    // Helper to draw a pulsing highlighted airport dot
+    function drawHighlightedAirport(apIdx, color) {
+        const ap = state.airports[apIdx];
+        if (!ap) return;
         const px = proj([ap.lon, ap.lat]);
+        if (!px) return;
 
-        if (px) {
-            ctx.save();
-            const pulseRadius = 5 + (Date.now() % 1000) / 100 * 1.5;
-            ctx.beginPath();
-            ctx.arc(px[0], px[1], pulseRadius, 0, 2 * Math.PI);
-            ctx.strokeStyle = themeColors.routeLocation;
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
+        ctx.save();
+        const pulseRadius = 5 + (Date.now() % 1000) / 100 * 1.5;
+        ctx.beginPath();
+        ctx.arc(px[0], px[1], pulseRadius, 0, 2 * Math.PI);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-            ctx.beginPath();
-            ctx.arc(px[0], px[1], 5, 0, 2 * Math.PI);
-            ctx.fillStyle = themeColors.routeLocation;
-            ctx.shadowColor = themeColors.routeLocation;
-            ctx.shadowBlur = 10;
-            ctx.fill();
-            ctx.restore();
-        }
+        ctx.beginPath();
+        ctx.arc(px[0], px[1], 5, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 10;
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // Second pass: selected "From" airport with glow halo
+    if (state.selectedAirportIndex !== null) {
+        drawHighlightedAirport(state.selectedAirportIndex, themeColors.routeLocation);
+    }
+
+    // Third pass: selected "To" airport with pink glow halo
+    if (state.locationToIndex !== null) {
+        drawHighlightedAirport(state.locationToIndex, themeColors.routeLocation);
     }
 }
 
