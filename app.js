@@ -995,16 +995,38 @@ function setLocationFilter(apIdx) {
             routesByDest[destIata].push(r);
         });
 
-        // Keep up to 8 best paths (sorted by hub traffic) for each unique destination
-        const cappedRoutes = [];
+        // Sort each destination's paths by hub flightsCount descending
         Object.values(routesByDest).forEach(routes => {
             routes.sort((a, b) => b.src.flightsCount - a.src.flightsCount);
-            cappedRoutes.push(...routes.slice(0, 8));
         });
 
-        // Sort by destination traffic and slice at 1000 to show comprehensive intercontinental connections
-        cappedRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...cappedRoutes.slice(0, 1000));
+        // Build a fast lookup map for flightsCount by IATA code
+        const flightsCountMap = {};
+        state.airports.forEach(ap => {
+            flightsCountMap[ap.iata] = ap.flightsCount || 0;
+        });
+
+        // Sort unique destinations by traffic count descending
+        const sortedDests = Object.keys(routesByDest).sort((a, b) => {
+            return (flightsCountMap[b] || 0) - (flightsCountMap[a] || 0);
+        });
+
+        const roundRobinRoutes = [];
+        const sliceCap = 1000;
+
+        // Pass 1-8: Multi-pass round-robin selection.
+        // This guarantees that 100% of unique destinations get their 1st best path (Pass 0),
+        // and only then we fill the remaining slots with secondary/tertiary redundant paths.
+        for (let pass = 0; pass < 8; pass++) {
+            sortedDests.forEach(dest => {
+                if (roundRobinRoutes.length < sliceCap) {
+                    const route = routesByDest[dest][pass];
+                    if (route) roundRobinRoutes.push(route);
+                }
+            });
+        }
+
+        state.activeRoutes.push(...roundRobinRoutes);
     }
 
     // PERF: pre-build route geometry
