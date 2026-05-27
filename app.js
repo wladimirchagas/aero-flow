@@ -1293,10 +1293,9 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     });
 
     if (state.connectionType === 'connecting' || state.connectionType === 'connecting-2') {
-        // Sort hubs by traffic and cap at 200 hubs (400 legs total)
+        // Sort hubs by traffic
         const sortedHubIndices = [...seenHubs.keys()]
-            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
-            .slice(0, 200);
+            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0));
 
         const connectingLegs = [];
         sortedHubIndices.forEach(hubIdx => {
@@ -1406,8 +1405,7 @@ function applyPointToPointFilter(fromIdx, toIdx) {
                               getGeographicDistance(state.airports[b.h1], state.airports[b.h2]) +
                               getGeographicDistance(state.airports[b.h2], toAp);
                 return distA - distB;
-            })
-            .slice(0, 15);
+            });
 
         const connectingLegs = [];
         sortedPaths.forEach(path => {
