@@ -600,12 +600,54 @@ function setAirlineFilter(iata) {
     state.activeFilter = { type: 'airline', value: iata };
     state.selectedAirportIndex = null;
 
-    state.activeRoutes = al.routes.map(r => ({
+    // Build direct routes for this airline
+    const directRoutes = al.routes.map(r => ({
         src: state.airports[r[0]],
         dst: state.airports[r[1]],
         airline: iata,
         type: 'direct'
     }));
+
+    // Collect all airport indices directly served by this airline
+    const directServedSet = new Set();
+    al.routes.forEach(r => {
+        directServedSet.add(r[0]);
+        directServedSet.add(r[1]);
+    });
+
+    state.activeRoutes = [...directRoutes];
+
+    // If 1-stop mode: find outbound legs from every airline hub to airports not directly served
+    if (state.connectionType === 'connecting') {
+        const connectingRoutes = [];
+        const seenConnectingKey = new Set();
+
+        directServedSet.forEach(hubIdx => {
+            Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
+                otherAl.routes.forEach(r => {
+                    if (r[0] === hubIdx) {
+                        const destIdx = r[1];
+                        if (!directServedSet.has(destIdx)) {
+                            const key = `${hubIdx}-${destIdx}`;
+                            if (!seenConnectingKey.has(key)) {
+                                seenConnectingKey.add(key);
+                                connectingRoutes.push({
+                                    src: state.airports[hubIdx],
+                                    dst: state.airports[destIdx],
+                                    airline: alIata,
+                                    type: 'connecting'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        // Sort by destination traffic and cap to keep performance reasonable
+        connectingRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        state.activeRoutes.push(...connectingRoutes.slice(0, 300));
+    }
 
     // PERF: pre-build route geometry
     buildRouteFeatures();
@@ -618,7 +660,9 @@ function setAirlineFilter(iata) {
     document.getElementById('filter-pill-label').innerText = `Selected Airline: ${al.name}`;
 
     document.getElementById('stat-airports').innerText = getUniqueAirportsCount(state.activeRoutes);
-    document.getElementById('stat-routes').innerText = al.routesCount;
+    document.getElementById('stat-routes').innerText = state.connectionType === 'connecting'
+        ? state.activeRoutes.length
+        : al.routesCount;
 
     document.getElementById('stat-extra-card').style.display = 'flex';
     document.getElementById('stat-extra-label').innerText = "HQ Country";
