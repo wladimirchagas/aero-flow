@@ -896,53 +896,54 @@ function setAirlineFilter(iata) {
         directServedSet.forEach(hubIdx => {
             Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
                 otherAl.routes.forEach(r => {
-                    if (r[0] === hubIdx) {
-                        const destIdx = r[1];
-                        if (!directServedSet.has(destIdx)) {
-                            const key = `${hubIdx}-${destIdx}`;
-                            if (!seenConnectingKey.has(key)) {
-                                seenConnectingKey.add(key);
-                                connectingRoutes.push({
-                                    src: state.airports[hubIdx],
-                                    dst: state.airports[destIdx],
-                                    airline: alIata,
-                                    type: 'connecting'
-                                });
-                            }
+                    let destIdx = null;
+                    if (r[0] === hubIdx) destIdx = r[1];
+                    else if (r[1] === hubIdx) destIdx = r[0];
+
+                    if (destIdx !== null && !directServedSet.has(destIdx)) {
+                        const key = `${hubIdx}-${destIdx}`;
+                        if (!seenConnectingKey.has(key)) {
+                            seenConnectingKey.add(key);
+                            connectingRoutes.push({
+                                src: state.airports[hubIdx],
+                                dst: state.airports[destIdx],
+                                airline: alIata,
+                                type: 'connecting'
+                            });
                         }
                     }
                 });
             });
         });
 
-        // Sort by destination traffic and cap to keep performance reasonable
+        // Sort by destination traffic
         connectingRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...connectingRoutes.slice(0, 300));
+        state.activeRoutes.push(...connectingRoutes);
     } else if (state.connectionType === 'connecting-2') {
         const level2Routes = [];
         const seenLevel2 = new Set();
 
-        // Direct hubs
+        // Direct hubs - no arbitrary slice cap!
         const sortedDirectHubs = [...directServedSet]
-            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
-            .slice(0, 35);
+            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0));
 
         sortedDirectHubs.forEach(hubIdx => {
             Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
                 otherAl.routes.forEach(r => {
-                    if (r[0] === hubIdx) {
-                        const destIdx = r[1];
-                        if (!directServedSet.has(destIdx)) {
-                            const key = `${hubIdx}-${destIdx}`;
-                            if (!seenLevel2.has(key)) {
-                                seenLevel2.add(key);
-                                level2Routes.push({
-                                    src: state.airports[hubIdx],
-                                    dst: state.airports[destIdx],
-                                    airline: alIata,
-                                    type: 'connecting'
-                                });
-                            }
+                    let destIdx = null;
+                    if (r[0] === hubIdx) destIdx = r[1];
+                    else if (r[1] === hubIdx) destIdx = r[0];
+
+                    if (destIdx !== null && !directServedSet.has(destIdx)) {
+                        const key = `${hubIdx}-${destIdx}`;
+                        if (!seenLevel2.has(key)) {
+                            seenLevel2.add(key);
+                            level2Routes.push({
+                                src: state.airports[hubIdx],
+                                dst: state.airports[destIdx],
+                                airline: alIata,
+                                type: 'connecting'
+                            });
                         }
                     }
                 });
@@ -950,10 +951,9 @@ function setAirlineFilter(iata) {
         });
 
         level2Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        const cappedLevel2Routes = level2Routes.slice(0, 200);
-        state.activeRoutes.push(...cappedLevel2Routes);
+        state.activeRoutes.push(...level2Routes);
 
-        const activeLevel2Set = new Set(cappedLevel2Routes.map(r => state.airports.indexOf(r.dst)));
+        const activeLevel2Set = new Set(level2Routes.map(r => state.airports.indexOf(r.dst)));
 
         // Level 3 routes
         const level3Routes = [];
@@ -962,19 +962,20 @@ function setAirlineFilter(iata) {
         activeLevel2Set.forEach(hub2Idx => {
             Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
                 otherAl.routes.forEach(r => {
-                    if (r[0] === hub2Idx) {
-                        const destIdx = r[1];
-                        if (!directServedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
-                            const key = `${hub2Idx}-${destIdx}`;
-                            if (!seenLevel3.has(key)) {
-                                seenLevel3.add(key);
-                                level3Routes.push({
-                                    src: state.airports[hub2Idx],
-                                    dst: state.airports[destIdx],
-                                    airline: alIata,
-                                    type: 'connecting-2'
-                                });
-                            }
+                    let destIdx = null;
+                    if (r[0] === hub2Idx) destIdx = r[1];
+                    else if (r[1] === hub2Idx) destIdx = r[0];
+
+                    if (destIdx !== null && !directServedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
+                        const key = `${hub2Idx}-${destIdx}`;
+                        if (!seenLevel3.has(key)) {
+                            seenLevel3.add(key);
+                            level3Routes.push({
+                                src: state.airports[hub2Idx],
+                                dst: state.airports[destIdx],
+                                airline: alIata,
+                                type: 'connecting-2'
+                            });
                         }
                     }
                 });
@@ -982,7 +983,7 @@ function setAirlineFilter(iata) {
         });
 
         level3Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...level3Routes.slice(0, 200));
+        state.activeRoutes.push(...level3Routes);
     }
 
     // PERF: pre-build route geometry
@@ -1059,19 +1060,20 @@ function setLocationFilter(apIdx) {
         directConnectedSet.forEach(hubIdx => {
             Object.entries(state.airlines).forEach(([alIata, al]) => {
                 al.routes.forEach(r => {
-                    if (r[0] === hubIdx) {
-                        const destIdx = r[1];
-                        if (destIdx !== apIdx && !directConnectedSet.has(destIdx)) {
-                            const key = `${hubIdx}-${destIdx}`;
-                            if (!seenConnectingDest.has(key)) {
-                                seenConnectingDest.add(key);
-                                connectingRoutes.push({
-                                    src: state.airports[hubIdx],
-                                    dst: state.airports[destIdx],
-                                    airline: alIata,
-                                    type: 'connecting'
-                                });
-                            }
+                    let destIdx = null;
+                    if (r[0] === hubIdx) destIdx = r[1];
+                    else if (r[1] === hubIdx) destIdx = r[0];
+
+                    if (destIdx !== null && destIdx !== apIdx && !directConnectedSet.has(destIdx)) {
+                        const key = `${hubIdx}-${destIdx}`;
+                        if (!seenConnectingDest.has(key)) {
+                            seenConnectingDest.add(key);
+                            connectingRoutes.push({
+                                src: state.airports[hubIdx],
+                                dst: state.airports[destIdx],
+                                airline: alIata,
+                                type: 'connecting'
+                            });
                         }
                     }
                 });
@@ -1105,70 +1107,34 @@ function setLocationFilter(apIdx) {
         });
 
         const roundRobinRoutes = [];
-        const sliceCap = 1000;
 
         // Pass 1-8: Multi-pass round-robin selection.
         // This guarantees that 100% of unique destinations get their 1st best path (Pass 0),
         // and only then we fill the remaining slots with secondary/tertiary redundant paths.
+        // We completely remove any arbitrary slice cap (previously capped at 1000).
         for (let pass = 0; pass < 8; pass++) {
             sortedDests.forEach(dest => {
-                if (roundRobinRoutes.length < sliceCap) {
-                    const route = routesByDest[dest][pass];
-                    if (route) roundRobinRoutes.push(route);
-                }
+                const route = routesByDest[dest][pass];
+                if (route) roundRobinRoutes.push(route);
             });
         }
 
         state.activeRoutes.push(...roundRobinRoutes);
-    }
-    if (state.connectionType === 'connecting-2') {
-        const level2Routes = [];
-        const seenLevel2 = new Set();
 
-        // Sort direct hubs by flightsCount descending, take top 35 to prevent explosion
-        const sortedHub1Idxs = [...directConnectedSet]
-            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
-            .slice(0, 35);
+        // 3. If 'connecting-2' type selected, compute 3-hop layovers (2-stop connections)
+        if (state.connectionType === 'connecting-2') {
+            const level3Routes = [];
+            const seenLevel3 = new Set();
+            const activeLevel2Set = new Set(connectingRoutes.map(r => state.airports.indexOf(r.dst)));
 
-        sortedHub1Idxs.forEach(hub1Idx => {
-            Object.entries(state.airlines).forEach(([alIata, al]) => {
-                al.routes.forEach(r => {
-                    if (r[0] === hub1Idx) {
-                        const hub2Idx = r[1];
-                        if (hub2Idx !== apIdx && !directConnectedSet.has(hub2Idx)) {
-                            const key = `${hub1Idx}-${hub2Idx}`;
-                            if (!seenLevel2.has(key)) {
-                                seenLevel2.add(key);
-                                level2Routes.push({
-                                    src: state.airports[hub1Idx],
-                                    dst: state.airports[hub2Idx],
-                                    airline: alIata,
-                                    type: 'connecting'
-                                });
-                            }
-                        }
-                    }
-                });
-            });
-        });
+            activeLevel2Set.forEach(hub2Idx => {
+                Object.entries(state.airlines).forEach(([alIata, al]) => {
+                    al.routes.forEach(r => {
+                        let destIdx = null;
+                        if (r[0] === hub2Idx) destIdx = r[1];
+                        else if (r[1] === hub2Idx) destIdx = r[0];
 
-        // Cap Level 2 routes to keep it clean
-        level2Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        const cappedLevel2Routes = level2Routes.slice(0, 200);
-        state.activeRoutes.push(...cappedLevel2Routes);
-
-        const activeLevel2Set = new Set(cappedLevel2Routes.map(r => state.airports.indexOf(r.dst)));
-
-        // Level 3 routes (Hub2 -> Dest)
-        const level3Routes = [];
-        const seenLevel3 = new Set();
-
-        activeLevel2Set.forEach(hub2Idx => {
-            Object.entries(state.airlines).forEach(([alIata, al]) => {
-                al.routes.forEach(r => {
-                    if (r[0] === hub2Idx) {
-                        const destIdx = r[1];
-                        if (destIdx !== apIdx && !directConnectedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
+                        if (destIdx !== null && destIdx !== apIdx && !directConnectedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
                             const key = `${hub2Idx}-${destIdx}`;
                             if (!seenLevel3.has(key)) {
                                 seenLevel3.add(key);
@@ -1180,14 +1146,13 @@ function setLocationFilter(apIdx) {
                                 });
                             }
                         }
-                    }
+                    });
                 });
             });
-        });
 
-        // Cap Level 3 routes
-        level3Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...level3Routes.slice(0, 200));
+            // No cap on level3Routes (previously capped at 200)
+            state.activeRoutes.push(...level3Routes);
+        }
     }
 
     // PERF: pre-build route geometry
