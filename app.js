@@ -379,7 +379,7 @@ async function loadData() {
         // Step 2: Load flight databases
         loaderText.innerText = "Indexing routes database...";
         progressFill.style.width = "60%";
-        const dataRes = await fetch('data/data.json?v=2');
+        const dataRes = await fetch('data/data.json?v=3');
         const aerodata = await dataRes.json();
 
         state.airports = aerodata.airports;
