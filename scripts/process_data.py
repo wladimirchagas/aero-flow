@@ -132,6 +132,10 @@ def main():
         src_iata = row[2]
         dst_iata = row[4]
 
+        # Ignore raw routes for French Bee (BF) to filter out defunct Vincent Aviation flights
+        if al_iata == "BF":
+            continue
+
         # Verify source and destination exist in our airports dictionary
         if src_iata in airports_dict and dst_iata in airports_dict and al_iata in airlines_dict:
             src_ap = airports_dict[src_iata]
@@ -160,7 +164,9 @@ def main():
         {"airline": "BF", "src": "SFO", "dst": "PPT"},
         {"airline": "BF", "src": "PPT", "dst": "SFO"},
         {"airline": "BF", "src": "ORY", "dst": "RUN"},
-        {"airline": "BF", "src": "RUN", "dst": "ORY"}
+        {"airline": "BF", "src": "RUN", "dst": "ORY"},
+        {"airline": "BF", "src": "ORY", "dst": "YUL"},
+        {"airline": "BF", "src": "YUL", "dst": "ORY"}
     ]
     for mr in manual_routes:
         if mr["src"] in airports_dict and mr["dst"] in airports_dict:
@@ -184,14 +190,12 @@ def main():
     # Since only original airport IDs are purely numeric strings (digits), filtering by digits isolates them!
     unique_airports = [v for k, v in airports_dict.items() if k.isdigit()]
     
-    # Sort by activity count and slice top 1800 airports
-    unique_airports.sort(key=lambda x: x["flightsCount"], reverse=True)
-    
-    # Keep the top 1800 busiest airports (this easily includes Paris, Melbourne, Singapore, all major hubs)
-    retained_airports = unique_airports[:1800]
+    # Completely remove any limit whatsoever to the Global Airport Capacity Cap
+    # We preserve every single unique airport in the database!
+    retained_airports = unique_airports
     retained_iata_set = set(ap["iata"] for ap in retained_airports)
     
-    print(f"Retained top {len(retained_airports)} busiest airports.")
+    print(f"Retained all {len(retained_airports)} airports (no global cap limits).")
 
     # Re-index airports to create a compact array for the client
     # Clean up the dictionaries so they are small
@@ -211,8 +215,23 @@ def main():
 
     # Filter routes to only connect retained airports, and build index-based route lists
     final_routes_count = 0
+    from math import sin, cos, acos, radians
     for r in routes_list:
         if r["src"] in retained_iata_set and r["dst"] in retained_iata_set:
+            # Calculate distance to filter out military/helipad same-city glitches under 50km
+            ap1 = airports_dict[r["src"]]
+            ap2 = airports_dict[r["dst"]]
+            try:
+                lat1, lon1 = radians(ap1["lat"]), radians(ap1["lon"])
+                lat2, lon2 = radians(ap2["lat"]), radians(ap2["lon"])
+                # Spherical law of cosines
+                dist_val = acos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2)*cos(lon2-lon1)) * 6371
+            except Exception:
+                dist_val = 100  # Default if math error
+            
+            if dist_val < 50:
+                continue
+
             src_idx = iata_to_index[r["src"]]
             dst_idx = iata_to_index[r["dst"]]
             al_iata = r["airline"]
