@@ -1399,11 +1399,15 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     if (state.connectionType === 'connecting-2') {
         const sortedPaths = twoStopPaths
             .sort((a, b) => {
-                const scoreA = (state.airports[a.h1].flightsCount || 0) + (state.airports[a.h2].flightsCount || 0);
-                const scoreB = (state.airports[b.h1].flightsCount || 0) + (state.airports[b.h2].flightsCount || 0);
-                return scoreB - scoreA;
+                const distA = getGeographicDistance(fromAp, state.airports[a.h1]) +
+                              getGeographicDistance(state.airports[a.h1], state.airports[a.h2]) +
+                              getGeographicDistance(state.airports[a.h2], toAp);
+                const distB = getGeographicDistance(fromAp, state.airports[b.h1]) +
+                              getGeographicDistance(state.airports[b.h1], state.airports[b.h2]) +
+                              getGeographicDistance(state.airports[b.h2], toAp);
+                return distA - distB;
             })
-            .slice(0, 100);
+            .slice(0, 15);
 
         const connectingLegs = [];
         sortedPaths.forEach(path => {
@@ -1510,9 +1514,13 @@ function applyPointToPointFilter(fromIdx, toIdx) {
 
         const sortedPathsToShow = twoStopPaths
             .sort((a, b) => {
-                const scoreA = (state.airports[a.h1].flightsCount || 0) + (state.airports[a.h2].flightsCount || 0);
-                const scoreB = (state.airports[b.h1].flightsCount || 0) + (state.airports[b.h2].flightsCount || 0);
-                return scoreB - scoreA;
+                const distA = getGeographicDistance(fromAp, state.airports[a.h1]) +
+                              getGeographicDistance(state.airports[a.h1], state.airports[a.h2]) +
+                              getGeographicDistance(state.airports[a.h2], toAp);
+                const distB = getGeographicDistance(fromAp, state.airports[b.h1]) +
+                              getGeographicDistance(state.airports[b.h1], state.airports[b.h2]) +
+                              getGeographicDistance(state.airports[b.h2], toAp);
+                return distA - distB;
             })
             .slice(0, 5);
 
@@ -1630,6 +1638,14 @@ function getClosestAirport(lat, lon) {
     });
     
     return closestApIdx;
+}
+
+// Quick equirectangular distance helper (returns squared distance in degrees)
+function getGeographicDistance(ap1, ap2) {
+    if (!ap1 || !ap2) return Infinity;
+    const x = (ap1.lon - ap2.lon) * Math.cos((ap1.lat + ap2.lat) * Math.PI / 360);
+    const y = ap1.lat - ap2.lat;
+    return x * x + y * y;
 }
 
 // Helper to programmatically activate the Location Tab in the UI Sidebar
