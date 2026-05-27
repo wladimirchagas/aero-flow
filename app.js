@@ -83,11 +83,14 @@ const themeColors = {
     routeActiveGlow: 'rgba(0, 242, 254, 0.4)',
     routeLocation: '#ff3377',
     routeLocationGlow: 'rgba(255, 51, 119, 0.4)',
+    routeAirline: '#f5a623',          // amber-gold: airline filter lines
+    routeAirlineGlow: 'rgba(245, 166, 35, 0.4)',
     airportBase: '#7952f5',
     airportGlow: 'rgba(121, 82, 245, 0.5)',
     airportActive: '#00f2fe',
     particleCyan: '#00f2fe',
-    particlePink: '#ff3377'
+    particlePink: '#ff3377',
+    particleAirline: '#f5a623'        // amber-gold: particles on airline routes
 };
 
 // Initialize Application on Window Load
@@ -859,7 +862,7 @@ function initParticles() {
             speed: 0.003 + Math.random() * 0.003,
             color: r.type === 'connecting'
                 ? 'rgba(0, 242, 254, 0.7)'
-                : (state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleCyan)
+                : (state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleAirline)
         });
     });
 
@@ -958,9 +961,9 @@ function drawFlightRoutes() {
     // --- Bucket B: glow routes (active direct with filter) ---
     if (hasFilter) {
         ctx.save();
-        ctx.shadowColor = isLocation ? themeColors.routeLocation : themeColors.routeActive;
+        ctx.shadowColor = isLocation ? themeColors.routeLocation : themeColors.routeAirline;
         ctx.shadowBlur = 4;
-        ctx.strokeStyle = isLocation ? themeColors.routeLocation : themeColors.routeActive;
+        ctx.strokeStyle = isLocation ? themeColors.routeLocation : themeColors.routeAirline;
         ctx.lineWidth = 1.6;
         ctx.setLineDash([]);
 
@@ -1033,7 +1036,11 @@ function drawAirports() {
     // First pass: all non-selected airports (no shadow)
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = state.activeFilter.type ? themeColors.airportActive : themeColors.airportBase;
+    ctx.fillStyle = state.activeFilter.type === 'location'
+        ? themeColors.airportActive
+        : state.activeFilter.type === 'airline'
+            ? themeColors.routeAirline
+            : themeColors.airportBase;
     const dotRadius = state.activeFilter.type ? 2 : 1.5;
 
     for (let i = 0; i < limit; i++) {
