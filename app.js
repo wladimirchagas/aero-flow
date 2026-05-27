@@ -1002,10 +1002,9 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     });
     state.activeRoutes.push(...directRoutes);
 
-    // --- 1-stop connection routes (always shown regardless of connectionType toggle) ---
-    // A 1-stop connection is: fromIdx → hub → toIdx (any airline each leg)
+    // --- 1-stop connection routes ---
     // Build set of hubs reachable from fromIdx
-    const fromHubs = new Map(); // hubIdx -> [{airline}]
+    const fromHubs = new Map(); // hubIdx -> [airlines]
     Object.entries(state.airlines).forEach(([alIata, al]) => {
         al.routes.forEach(r => {
             if (r[0] === fromIdx && r[1] !== toIdx) {
@@ -1020,8 +1019,7 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     });
 
     // Find hubs that also connect to toIdx
-    const seenHubs = new Set();
-    const connectingLegs = []; // legs: from → hub, hub → to
+    const seenHubs = new Map(); // hubIdx -> airline for Leg 2
 
     Object.entries(state.airlines).forEach(([alIata, al]) => {
         al.routes.forEach(r => {
@@ -1032,27 +1030,40 @@ function applyPointToPointFilter(fromIdx, toIdx) {
             if (r[0] === toIdx && fromHubs.has(r[1])) hubIdx = r[1];
 
             if (hubIdx !== null && !seenHubs.has(hubIdx)) {
-                seenHubs.add(hubIdx);
-                const hub = state.airports[hubIdx];
-                // Leg 1: from → hub
-                connectingLegs.push({
-                    src: fromAp, dst: hub,
-                    airline: (fromHubs.get(hubIdx) || [alIata])[0],
-                    type: 'connecting'
-                });
-                // Leg 2: hub → to
-                connectingLegs.push({
-                    src: hub, dst: toAp,
-                    airline: alIata,
-                    type: 'connecting'
-                });
+                seenHubs.set(hubIdx, alIata);
             }
         });
     });
 
-    // Sort hubs by traffic and cap
-    connectingLegs.sort((a, b) => (b.dst.flightsCount || 0) - (a.dst.flightsCount || 0));
-    state.activeRoutes.push(...connectingLegs.slice(0, 400));
+    if (state.connectionType === 'connecting') {
+        // Sort hubs by traffic and cap at 200 hubs (400 legs total)
+        const sortedHubIndices = [...seenHubs.keys()]
+            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
+            .slice(0, 200);
+
+        const connectingLegs = [];
+        sortedHubIndices.forEach(hubIdx => {
+            const hub = state.airports[hubIdx];
+            const alIata2 = seenHubs.get(hubIdx);
+            const alIata1 = (fromHubs.get(hubIdx) || [alIata2])[0];
+
+            // Leg 1: from → hub (direct leg, solid green line)
+            connectingLegs.push({
+                src: fromAp,
+                dst: hub,
+                airline: alIata1,
+                type: 'direct'
+            });
+            // Leg 2: hub → to (connecting leg, yellow dashed line)
+            connectingLegs.push({
+                src: hub,
+                dst: toAp,
+                airline: alIata2,
+                type: 'connecting'
+            });
+        });
+        state.activeRoutes.push(...connectingLegs);
+    }
 
     // PERF: pre-build route geometry
     buildRouteFeatures();
@@ -1062,13 +1073,13 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     initParticles();
 
     const directCount = directRoutes.length;
-    const hubCount = seenHubs.size;
+    const hubCount = state.connectionType === 'connecting' ? seenHubs.size : 0;
 
     // UI Updates
     document.getElementById('active-filter-pill').style.display = 'flex';
     document.getElementById('filter-pill-label').innerText = `${fromAp.iata} → ${toAp.iata}`;
 
-    document.getElementById('stat-airports').innerText = hubCount + (directCount > 0 ? 0 : 0);
+    document.getElementById('stat-airports').innerText = hubCount;
     document.getElementById('stat-routes').innerText = state.activeRoutes.length;
 
     document.getElementById('stat-extra-card').style.display = 'flex';
@@ -1077,35 +1088,48 @@ function applyPointToPointFilter(fromIdx, toIdx) {
 
     // Description text
     const descText = document.getElementById('stats-desc-text');
-    if (directCount > 0) {
-        descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}. ${hubCount} possible 1-stop connection hubs shown.`;
+    if (state.connectionType === 'connecting') {
+        if (directCount > 0) {
+            descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}. ${hubCount} possible 1-stop connection hubs shown.`;
+        } else {
+            descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Showing ${hubCount} possible 1-stop connection hub${hubCount !== 1 ? 's' : ''}.`;
+        }
     } else {
-        descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Showing ${hubCount} possible 1-stop connection hub${hubCount !== 1 ? 's' : ''}.`;
+        if (directCount > 0) {
+            descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}.`;
+        } else {
+            descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Switch to 1-Stop to see connection hubs.`;
+        }
     }
 
     // Show hubs list
     const topHubsContainer = document.getElementById('top-hubs-container');
     const topHubsList = document.getElementById('top-hubs-list');
     topHubsList.innerHTML = '';
-    topHubsContainer.querySelector('h3').innerText = '1-Stop Connection Hubs';
 
-    const sortedHubs = [...seenHubs]
-        .map(idx => state.airports[idx])
-        .sort((a, b) => (b.flightsCount || 0) - (a.flightsCount || 0))
-        .slice(0, 5);
+    if (state.connectionType === 'connecting') {
+        topHubsContainer.querySelector('h3').innerText = '1-Stop Connection Hubs';
 
-    sortedHubs.forEach(hub => {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="hub-name">${hub.city} (${hub.iata})</span><span class="hub-count">via hub</span>`;
-        topHubsList.appendChild(li);
-    });
+        const sortedHubs = [...seenHubs.keys()]
+            .map(idx => state.airports[idx])
+            .sort((a, b) => (b.flightsCount || 0) - (a.flightsCount || 0))
+            .slice(0, 5);
 
-    if (sortedHubs.length === 0) {
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="hub-name">No 1-stop hubs found</span>`;
-        topHubsList.appendChild(li);
+        sortedHubs.forEach(hub => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="hub-name">${hub.city} (${hub.iata})</span><span class="hub-count">via hub</span>`;
+            topHubsList.appendChild(li);
+        });
+
+        if (sortedHubs.length === 0) {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="hub-name">No 1-stop hubs found</span>`;
+            topHubsList.appendChild(li);
+        }
+        topHubsContainer.style.display = 'block';
+    } else {
+        topHubsContainer.style.display = 'none';
     }
-    topHubsContainer.style.display = 'block';
 
     markDirty();
 }
