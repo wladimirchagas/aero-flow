@@ -18,24 +18,45 @@ const data = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
 
 function log(msg) { console.log('[FIX] ' + msg); }
 
-// ─── STEP 1: Fix city name typos ─────────────────────────────────────────────
+// ─── STEP 1: Fix city name typos, coordinates, and modern airport names ─────
 
 const typoFixes = {
   CSX: { city: 'Changsha' },   // was 'Changcha'
   NGB: { city: 'Ningbo' },     // was 'Ninbo'
   MAA: { city: 'Chennai' },    // was 'Madras'
+  HFE: { name: 'Hefei Xinqiao International Airport', lat: 31.977, lon: 116.973 },
+  TAO: { name: 'Qingdao Jiaodong International Airport', lat: 36.349, lon: 120.082 },
+  LAS: { name: 'Harry Reid International Airport' },
+  MXP: { city: 'Milan' }
 };
 
 let typoCount = 0;
 for (const ap of data.airports) {
   if (typoFixes[ap.iata]) {
     const fix = typoFixes[ap.iata];
-    log(`Typo fix: ${ap.iata} city "${ap.city}" → "${fix.city}"`);
+    log(`Airport/City fix: ${ap.iata} → ${JSON.stringify(fix)}`);
     Object.assign(ap, fix);
     typoCount++;
   }
 }
-log(`✓ ${typoCount} city name typos fixed`);
+log(`✓ ${typoCount} airport/city updates applied`);
+
+// ─── STEP 1.5: Modernize country names ───────────────────────────────────────
+
+let countryModCount = 0;
+for (const ap of data.airports) {
+  if (ap.country === 'Burma') {
+    ap.country = 'Myanmar';
+    countryModCount++;
+  } else if (ap.country === 'Czech Republic') {
+    ap.country = 'Czechia';
+    countryModCount++;
+  } else if (ap.country === 'Macedonia') {
+    ap.country = 'North Macedonia';
+    countryModCount++;
+  }
+}
+log(`✓ ${countryModCount} country names modernized`);
 
 // ─── STEP 2: Fix isolated airports (PAC, GOM) ────────────────────────────────
 
@@ -196,6 +217,50 @@ for (const [code, airline] of Object.entries(data.airlines)) {
   }
 }
 log(`✓ ${dupsRemoved} duplicate routes removed after airport merging`);
+
+// ─── STEP 8.5: Modernize Airline Names & Merge Scoot (TZ → TR) ─────────────────
+
+log('Modernizing airline names...');
+const airlineRenames = {
+  G3: 'GOL Linhas Aéreas',
+  SQ: 'Singapore Airlines',
+  TR: 'Scoot',
+  VJ: 'VietJet Air',
+  LA: 'LATAM Airlines'
+};
+
+for (const [code, newName] of Object.entries(airlineRenames)) {
+  if (data.airlines[code]) {
+    log(`Airline rename: ${code} "${data.airlines[code].name}" → "${newName}"`);
+    data.airlines[code].name = newName;
+  }
+}
+
+// Merge Scoot: Move all routes from TZ to TR
+if (data.airlines.TZ && data.airlines.TR) {
+  log('Merging Scoot (TZ) routes into TR...');
+  const beforeCount = data.airlines.TR.routes.length;
+  
+  // Combine routes and filter out duplicates
+  const seenRoutes = new Set(data.airlines.TR.routes.map(([f, t]) => `${f}-${t}`));
+  let mergedCount = 0;
+  
+  data.airlines.TZ.routes.forEach(([f, t]) => {
+    const key = `${f}-${t}`;
+    if (!seenRoutes.has(key)) {
+      seenRoutes.add(key);
+      data.airlines.TR.routes.push([f, t]);
+      mergedCount++;
+    }
+  });
+  
+  data.airlines.TR.routesCount = data.airlines.TR.routes.length;
+  log(`✓ Merged ${mergedCount} unique routes from TZ to TR (TR now has ${data.airlines.TR.routesCount} routes)`);
+  
+  // Remove TZ from airlines
+  delete data.airlines.TZ;
+  log('✓ Old Scoot code TZ removed from airlines list');
+}
 
 // ─── STEP 9: Recompute flightsCount for ALL airports ─────────────────────────
 

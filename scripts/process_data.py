@@ -107,6 +107,12 @@ def main():
         "routesCount": 0,
         "routes": []
     }
+    airlines_dict["VB"] = {
+        "name": "VivaAerobus",
+        "iata": "VB",
+        "routesCount": 0,
+        "routes": []
+    }
 
     print(f"Successfully parsed {len(airlines_dict)} active airlines (including manual additions).")
 
