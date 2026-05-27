@@ -379,7 +379,7 @@ async function loadData() {
         // Step 2: Load flight databases
         loaderText.innerText = "Indexing routes database...";
         progressFill.style.width = "60%";
-        const dataRes = await fetch('data/data.json?v=4');
+        const dataRes = await fetch('data/data.json?v=5');
         const aerodata = await dataRes.json();
 
         state.airports = aerodata.airports;
@@ -718,10 +718,12 @@ function handleSearchInput(type, query) {
     } else {
         state.airports.forEach((ap, index) => {
             if (
-                ap.iata.toLowerCase().includes(cleanQuery) ||
-                ap.city.toLowerCase().includes(cleanQuery) ||
-                ap.name.toLowerCase().includes(cleanQuery) ||
-                ap.country.toLowerCase().includes(cleanQuery)
+                ap.flightsCount > 0 && (
+                    ap.iata.toLowerCase().includes(cleanQuery) ||
+                    ap.city.toLowerCase().includes(cleanQuery) ||
+                    ap.name.toLowerCase().includes(cleanQuery) ||
+                    ap.country.toLowerCase().includes(cleanQuery)
+                )
             ) {
                 matches.push({ ...ap, originalIndex: index });
             }
