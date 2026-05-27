@@ -37,6 +37,10 @@ const state = {
     lastFrameTime: 0,
     animFrameId: null,
 
+    // Sidebar transition state
+    sidebarCollapsed: false,
+    sidebarOffsetTransition: 1.0, // 1.0 = open, 0.0 = collapsed
+
     // PERF: dirty-flag — only repaint when something changed
     needsRender: true,
 
@@ -210,7 +214,10 @@ function initCanvas() {
 }
 
 function updateBaseScales() {
-    const availableWidth = state.width > 768 ? state.width - 380 : state.width;
+    const isMobile = state.width <= 768;
+    const sidebarWidth = isMobile ? 0 : 380;
+    const currentSidebarWidth = sidebarWidth * state.sidebarOffsetTransition;
+    const availableWidth = state.width - currentSidebarWidth;
     const refDimension = Math.min(availableWidth, state.height);
     
     // Calculate responsive base scales with sensible bounds to prevent overflow/too tiny views
@@ -248,7 +255,9 @@ function handleResize() {
 
 // Setup Projections (D3 Integration)
 function setupProjections() {
-    const center = [state.width / 2 + (state.width > 768 ? 100 : 0), state.height / 2];
+    const isMobile = state.width <= 768;
+    const shift = isMobile ? 0 : 100 * state.sidebarOffsetTransition;
+    const center = [state.width / 2 + shift, state.height / 2];
 
     if (state.projectionType === 'globe') {
         state.projection = d3.geoOrthographic()
@@ -569,6 +578,24 @@ function initUI() {
         btnDirect.classList.remove('active');
         reapplyActiveFilter();
     });
+
+    // 7. Sidebar toggle click listener
+    document.getElementById('sidebar-toggle-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleSidebar();
+    });
+
+    // 8. Keyboard hotkey listener ('\' or 's' key to toggle sidebar)
+    window.addEventListener('keydown', (e) => {
+        const activeEl = document.activeElement;
+        const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+        if (isInput) return;
+
+        if (e.key === '\\' || e.key === 's' || e.key === 'S') {
+            e.preventDefault();
+            toggleSidebar();
+        }
+    });
 }
 
 // Re-apply active filters when toggling modes
@@ -603,6 +630,35 @@ function toggleAutoRotate(enabled) {
     }
     // PERF: replace only the single icon element instead of scanning the full DOM
     lucide.createIcons({ nodes: [icon] });
+}
+
+// Toggle Sidebar panel collapse/expand
+function toggleSidebar(collapsed) {
+    if (collapsed === undefined) {
+        collapsed = !state.sidebarCollapsed;
+    }
+    state.sidebarCollapsed = collapsed;
+
+    const sidebar = document.getElementById('sidebar-panel');
+    const toggleBtn = document.getElementById('sidebar-toggle-btn');
+    const icon = document.getElementById('sidebar-toggle-icon');
+
+    if (state.sidebarCollapsed) {
+        sidebar.classList.add('collapsed');
+        icon.setAttribute('data-lucide', 'chevron-right');
+        toggleBtn.title = "Expand Sidebar (Press '\')";
+    } else {
+        sidebar.classList.remove('collapsed');
+        icon.setAttribute('data-lucide', 'chevron-left');
+        toggleBtn.title = "Collapse Sidebar (Press '\')";
+    }
+
+    // Re-initialize only this specific icon
+    if (window.lucide) {
+        lucide.createIcons({ nodes: [icon] });
+    }
+
+    markDirty();
 }
 
 // Autocomplete logic
@@ -1670,6 +1726,20 @@ function startAnimationLoop() {
 
     function loop(timestamp) {
         if (!state.lastFrameTime) state.lastFrameTime = timestamp;
+
+        // Interpolate sidebar transition for smooth canvas centering and scaling
+        const targetOffset = state.sidebarCollapsed ? 0 : 1;
+        if (Math.abs(state.sidebarOffsetTransition - targetOffset) > 0.001) {
+            state.sidebarOffsetTransition += (targetOffset - state.sidebarOffsetTransition) * 0.12;
+            updateBaseScales();
+            setupProjections();
+            state.needsRender = true;
+        } else if (state.sidebarOffsetTransition !== targetOffset) {
+            state.sidebarOffsetTransition = targetOffset;
+            updateBaseScales();
+            setupProjections();
+            state.needsRender = true;
+        }
 
         if (state.autoRotate && !state.rotationAnimating) {
             state.rotation[0] += state.rotationSpeed;

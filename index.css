@@ -133,6 +133,7 @@ canvas:active {
 
 /* Sidebar Styling (Interactive Glass Panel) */
 .sidebar {
+    position: relative; /* Position relative for the toggle button child */
     width: var(--sidebar-width);
     height: 100%;
     display: flex;
@@ -141,6 +142,54 @@ canvas:active {
     box-shadow: 10px 0 30px var(--color-sidebar-shadow);
     border-right: 1px solid var(--color-glass-border);
     transition: var(--transition-smooth), var(--transition-theme);
+}
+
+/* Collapsed state for sidebar */
+.sidebar.collapsed {
+    transform: translateX(-100%);
+    box-shadow: none; /* Hide shadow when off-screen to avoid visual bleeding */
+}
+
+/* Premium Sidebar Toggle Button */
+.sidebar-toggle-btn {
+    position: absolute;
+    top: 50%;
+    right: -24px; /* Stretches out 24px past the sidebar border */
+    transform: translateY(-50%);
+    width: 24px;
+    height: 56px;
+    background: var(--color-glass-bg);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--color-glass-border);
+    border-left: none; /* Seamless join with the sidebar border */
+    border-radius: 0 8px 8px 0;
+    color: var(--color-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    pointer-events: auto; /* Ensure click registration */
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.15);
+    transition: var(--transition-smooth), background 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.sidebar-toggle-btn:hover {
+    color: var(--color-cyan);
+    border-color: var(--color-cyan);
+    box-shadow: 4px 0 15px var(--color-cyan-glow);
+    background: var(--color-input-focus-bg);
+}
+
+.sidebar-toggle-btn:active {
+    transform: translateY(-50%) scale(0.95);
+}
+
+.sidebar-toggle-btn i {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .glass {
