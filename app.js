@@ -99,6 +99,9 @@ function getThemeColors() {
             routeConnecting: '#b89000',
             routeConnectingGlow: 'rgba(184, 144, 0, 0.4)',
             routeConnectingStroke: 'rgba(184, 144, 0, 0.6)',
+            routeConnecting2: '#d62424',
+            routeConnecting2Glow: 'rgba(214, 36, 36, 0.4)',
+            routeConnecting2Stroke: 'rgba(214, 36, 36, 0.65)',
             airportBase: '#6040e0',
             airportGlow: 'rgba(96, 64, 224, 0.45)',
             airportActive: '#0088bb',
@@ -106,7 +109,8 @@ function getThemeColors() {
             particlePink: '#d6004a',
             particleAirline: '#c47a00',
             particleDirect: '#1aaa50',
-            particleConnecting: '#b89000'
+            particleConnecting: '#b89000',
+            particleConnecting2: '#d62424'
         };
     }
     return {
@@ -128,6 +132,9 @@ function getThemeColors() {
         routeConnecting: '#f5e642',
         routeConnectingGlow: 'rgba(245, 230, 66, 0.4)',
         routeConnectingStroke: 'rgba(245, 230, 66, 0.6)',
+        routeConnecting2: '#ff4d4d',
+        routeConnecting2Glow: 'rgba(255, 77, 77, 0.45)',
+        routeConnecting2Stroke: 'rgba(255, 77, 77, 0.65)',
         airportBase: '#7952f5',
         airportGlow: 'rgba(121, 82, 245, 0.5)',
         airportActive: '#00f2fe',
@@ -135,7 +142,8 @@ function getThemeColors() {
         particlePink: '#ff3377',
         particleAirline: '#f5a623',
         particleDirect: '#39e07a',
-        particleConnecting: '#f5e642'
+        particleConnecting: '#f5e642',
+        particleConnecting2: '#ff4d4d'
     };
 }
 
@@ -563,12 +571,14 @@ function initUI() {
     // 6. Connection Type toggle buttons
     const btnDirect = document.getElementById('btn-direct');
     const btnConnecting = document.getElementById('btn-connecting');
+    const btnConnecting2 = document.getElementById('btn-connecting-2');
 
     btnDirect.addEventListener('click', () => {
         if (state.connectionType === 'direct') return;
         state.connectionType = 'direct';
         btnDirect.classList.add('active');
         btnConnecting.classList.remove('active');
+        btnConnecting2.classList.remove('active');
         reapplyActiveFilter();
     });
 
@@ -577,6 +587,16 @@ function initUI() {
         state.connectionType = 'connecting';
         btnConnecting.classList.add('active');
         btnDirect.classList.remove('active');
+        btnConnecting2.classList.remove('active');
+        reapplyActiveFilter();
+    });
+
+    btnConnecting2.addEventListener('click', () => {
+        if (state.connectionType === 'connecting-2') return;
+        state.connectionType = 'connecting-2';
+        btnConnecting2.classList.add('active');
+        btnDirect.classList.remove('active');
+        btnConnecting.classList.remove('active');
         reapplyActiveFilter();
     });
 
@@ -898,6 +918,71 @@ function setAirlineFilter(iata) {
         // Sort by destination traffic and cap to keep performance reasonable
         connectingRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
         state.activeRoutes.push(...connectingRoutes.slice(0, 300));
+    } else if (state.connectionType === 'connecting-2') {
+        const level2Routes = [];
+        const seenLevel2 = new Set();
+
+        // Direct hubs
+        const sortedDirectHubs = [...directServedSet]
+            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
+            .slice(0, 35);
+
+        sortedDirectHubs.forEach(hubIdx => {
+            Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
+                otherAl.routes.forEach(r => {
+                    if (r[0] === hubIdx) {
+                        const destIdx = r[1];
+                        if (!directServedSet.has(destIdx)) {
+                            const key = `${hubIdx}-${destIdx}`;
+                            if (!seenLevel2.has(key)) {
+                                seenLevel2.add(key);
+                                level2Routes.push({
+                                    src: state.airports[hubIdx],
+                                    dst: state.airports[destIdx],
+                                    airline: alIata,
+                                    type: 'connecting'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        level2Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        const cappedLevel2Routes = level2Routes.slice(0, 200);
+        state.activeRoutes.push(...cappedLevel2Routes);
+
+        const activeLevel2Set = new Set(cappedLevel2Routes.map(r => state.airports.indexOf(r.dst)));
+
+        // Level 3 routes
+        const level3Routes = [];
+        const seenLevel3 = new Set();
+
+        activeLevel2Set.forEach(hub2Idx => {
+            Object.entries(state.airlines).forEach(([alIata, otherAl]) => {
+                otherAl.routes.forEach(r => {
+                    if (r[0] === hub2Idx) {
+                        const destIdx = r[1];
+                        if (!directServedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
+                            const key = `${hub2Idx}-${destIdx}`;
+                            if (!seenLevel3.has(key)) {
+                                seenLevel3.add(key);
+                                level3Routes.push({
+                                    src: state.airports[hub2Idx],
+                                    dst: state.airports[destIdx],
+                                    airline: alIata,
+                                    type: 'connecting-2'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        level3Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        state.activeRoutes.push(...level3Routes.slice(0, 200));
     }
 
     // PERF: pre-build route geometry
@@ -911,7 +996,7 @@ function setAirlineFilter(iata) {
     document.getElementById('filter-pill-label').innerText = `Selected Airline: ${al.name}`;
 
     document.getElementById('stat-airports').innerText = getUniqueAirportsCount(state.activeRoutes);
-    document.getElementById('stat-routes').innerText = state.connectionType === 'connecting'
+    document.getElementById('stat-routes').innerText = (state.connectionType === 'connecting' || state.connectionType === 'connecting-2')
         ? state.activeRoutes.length
         : al.routesCount;
 
@@ -966,8 +1051,8 @@ function setLocationFilter(apIdx) {
 
     state.activeRoutes.push(...directRoutes);
 
-    // 2. If 'connecting' type selected, compute 2-hop layovers
-    if (state.connectionType === 'connecting') {
+    // 2. If 'connecting' or 'connecting-2' type selected, compute 2-hop layovers
+    if (state.connectionType === 'connecting' || state.connectionType === 'connecting-2') {
         const connectingRoutes = [];
         const seenConnectingDest = new Set();
 
@@ -1035,6 +1120,74 @@ function setLocationFilter(apIdx) {
         }
 
         state.activeRoutes.push(...roundRobinRoutes);
+    }
+    if (state.connectionType === 'connecting-2') {
+        const level2Routes = [];
+        const seenLevel2 = new Set();
+
+        // Sort direct hubs by flightsCount descending, take top 35 to prevent explosion
+        const sortedHub1Idxs = [...directConnectedSet]
+            .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
+            .slice(0, 35);
+
+        sortedHub1Idxs.forEach(hub1Idx => {
+            Object.entries(state.airlines).forEach(([alIata, al]) => {
+                al.routes.forEach(r => {
+                    if (r[0] === hub1Idx) {
+                        const hub2Idx = r[1];
+                        if (hub2Idx !== apIdx && !directConnectedSet.has(hub2Idx)) {
+                            const key = `${hub1Idx}-${hub2Idx}`;
+                            if (!seenLevel2.has(key)) {
+                                seenLevel2.add(key);
+                                level2Routes.push({
+                                    src: state.airports[hub1Idx],
+                                    dst: state.airports[hub2Idx],
+                                    airline: alIata,
+                                    type: 'connecting'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        // Cap Level 2 routes to keep it clean
+        level2Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        const cappedLevel2Routes = level2Routes.slice(0, 200);
+        state.activeRoutes.push(...cappedLevel2Routes);
+
+        const activeLevel2Set = new Set(cappedLevel2Routes.map(r => state.airports.indexOf(r.dst)));
+
+        // Level 3 routes (Hub2 -> Dest)
+        const level3Routes = [];
+        const seenLevel3 = new Set();
+
+        activeLevel2Set.forEach(hub2Idx => {
+            Object.entries(state.airlines).forEach(([alIata, al]) => {
+                al.routes.forEach(r => {
+                    if (r[0] === hub2Idx) {
+                        const destIdx = r[1];
+                        if (destIdx !== apIdx && !directConnectedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
+                            const key = `${hub2Idx}-${destIdx}`;
+                            if (!seenLevel3.has(key)) {
+                                seenLevel3.add(key);
+                                level3Routes.push({
+                                    src: state.airports[hub2Idx],
+                                    dst: state.airports[destIdx],
+                                    airline: alIata,
+                                    type: 'connecting-2'
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+        });
+
+        // Cap Level 3 routes
+        level3Routes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        state.activeRoutes.push(...level3Routes.slice(0, 200));
     }
 
     // PERF: pre-build route geometry
@@ -1139,7 +1292,7 @@ function applyPointToPointFilter(fromIdx, toIdx) {
         });
     });
 
-    if (state.connectionType === 'connecting') {
+    if (state.connectionType === 'connecting' || state.connectionType === 'connecting-2') {
         // Sort hubs by traffic and cap at 200 hubs (400 legs total)
         const sortedHubIndices = [...seenHubs.keys()]
             .sort((a, b) => (state.airports[b].flightsCount || 0) - (state.airports[a].flightsCount || 0))
@@ -1169,6 +1322,116 @@ function applyPointToPointFilter(fromIdx, toIdx) {
         state.activeRoutes.push(...connectingLegs);
     }
 
+    // --- 2-stop connection routes ---
+    const nFrom = new Map(); // hub1Idx -> [airlines]
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            if (r[0] === fromIdx) {
+                const h1 = r[1];
+                if (h1 !== fromIdx && h1 !== toIdx) {
+                    if (!nFrom.has(h1)) nFrom.set(h1, []);
+                    nFrom.get(h1).push(alIata);
+                }
+            }
+            if (r[1] === fromIdx) {
+                const h1 = r[0];
+                if (h1 !== fromIdx && h1 !== toIdx) {
+                    if (!nFrom.has(h1)) nFrom.set(h1, []);
+                    nFrom.get(h1).push(alIata);
+                }
+            }
+        });
+    });
+
+    const nTo = new Map(); // hub2Idx -> [airlines]
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            if (r[0] === toIdx) {
+                const h2 = r[1];
+                if (h2 !== fromIdx && h2 !== toIdx) {
+                    if (!nTo.has(h2)) nTo.set(h2, []);
+                    nTo.get(h2).push(alIata);
+                }
+            }
+            if (r[1] === toIdx) {
+                const h2 = r[0];
+                if (h2 !== fromIdx && h2 !== toIdx) {
+                    if (!nTo.has(h2)) nTo.set(h2, []);
+                    nTo.get(h2).push(alIata);
+                }
+            }
+        });
+    });
+
+    const twoStopPaths = []; // Array of { h1, h2, al1, al2, al3 }
+    const seenPaths = new Set(); // To avoid duplicates: `${h1}-${h2}`
+
+    Object.entries(state.airlines).forEach(([alIata, al]) => {
+        al.routes.forEach(r => {
+            const r0 = r[0];
+            const r1 = r[1];
+
+            // Case A: r0 is in nFrom (h1) and r1 is in nTo (h2)
+            if (nFrom.has(r0) && nTo.has(r1) && r0 !== r1) {
+                const pathKey = `${r0}-${r1}`;
+                if (!seenPaths.has(pathKey)) {
+                    seenPaths.add(pathKey);
+                    const al1 = nFrom.get(r0)[0];
+                    const al2 = alIata;
+                    const al3 = nTo.get(r1)[0];
+                    twoStopPaths.push({ h1: r0, h2: r1, al1, al2, al3 });
+                }
+            }
+            // Case B: r1 is in nFrom (h1) and r0 is in nTo (h2)
+            else if (nFrom.has(r1) && nTo.has(r0) && r0 !== r1) {
+                const pathKey = `${r1}-${r0}`;
+                if (!seenPaths.has(pathKey)) {
+                    seenPaths.add(pathKey);
+                    const al1 = nFrom.get(r1)[0];
+                    const al2 = alIata;
+                    const al3 = nTo.get(r0)[0];
+                    twoStopPaths.push({ h1: r1, h2: r0, al1, al2, al3 });
+                }
+            }
+        });
+    });
+
+    if (state.connectionType === 'connecting-2') {
+        const sortedPaths = twoStopPaths
+            .sort((a, b) => {
+                const scoreA = (state.airports[a.h1].flightsCount || 0) + (state.airports[a.h2].flightsCount || 0);
+                const scoreB = (state.airports[b.h1].flightsCount || 0) + (state.airports[b.h2].flightsCount || 0);
+                return scoreB - scoreA;
+            })
+            .slice(0, 100);
+
+        const connectingLegs = [];
+        sortedPaths.forEach(path => {
+            // Leg 1: from -> h1 (dashed green line, type 'direct')
+            connectingLegs.push({
+                src: fromAp,
+                dst: state.airports[path.h1],
+                airline: path.al1,
+                type: 'direct'
+            });
+            // Leg 2: h1 -> h2 (dashed yellow line, type 'connecting')
+            connectingLegs.push({
+                src: state.airports[path.h1],
+                dst: state.airports[path.h2],
+                airline: path.al2,
+                type: 'connecting'
+            });
+            // Leg 3: h2 -> to (dashed red line, type 'connecting-2')
+            connectingLegs.push({
+                src: state.airports[path.h2],
+                dst: toAp,
+                airline: path.al3,
+                type: 'connecting-2'
+            });
+        });
+        state.activeRoutes.push(...connectingLegs);
+    }
+
     // PERF: pre-build route geometry
     buildRouteFeatures();
 
@@ -1177,7 +1440,12 @@ function applyPointToPointFilter(fromIdx, toIdx) {
     initParticles();
 
     const directCount = directRoutes.length;
-    const hubCount = state.connectionType === 'connecting' ? seenHubs.size : 0;
+    let hubCount = 0;
+    if (state.connectionType === 'connecting') {
+        hubCount = seenHubs.size;
+    } else if (state.connectionType === 'connecting-2') {
+        hubCount = twoStopPaths.length;
+    }
 
     // UI Updates
     document.getElementById('active-filter-pill').style.display = 'flex';
@@ -1197,6 +1465,12 @@ function applyPointToPointFilter(fromIdx, toIdx) {
             descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}. ${hubCount} possible 1-stop connection hubs shown.`;
         } else {
             descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Showing ${hubCount} possible 1-stop connection hub${hubCount !== 1 ? 's' : ''}.`;
+        }
+    } else if (state.connectionType === 'connecting-2') {
+        if (directCount > 0) {
+            descText.innerText = `${directCount} direct flight${directCount > 1 ? 's' : ''} found between ${fromAp.city} and ${toAp.city}. ${hubCount} possible 2-stop connection paths found.`;
+        } else {
+            descText.innerText = `No direct flights between ${fromAp.city} and ${toAp.city}. Showing ${hubCount} possible 2-stop connection path${hubCount !== 1 ? 's' : ''}.`;
         }
     } else {
         if (directCount > 0) {
@@ -1228,6 +1502,31 @@ function applyPointToPointFilter(fromIdx, toIdx) {
         if (sortedHubs.length === 0) {
             const li = document.createElement('li');
             li.innerHTML = `<span class="hub-name">No 1-stop hubs found</span>`;
+            topHubsList.appendChild(li);
+        }
+        topHubsContainer.style.display = 'block';
+    } else if (state.connectionType === 'connecting-2') {
+        topHubsContainer.querySelector('h3').innerText = '2-Stop Connection Paths';
+
+        const sortedPathsToShow = twoStopPaths
+            .sort((a, b) => {
+                const scoreA = (state.airports[a.h1].flightsCount || 0) + (state.airports[a.h2].flightsCount || 0);
+                const scoreB = (state.airports[b.h1].flightsCount || 0) + (state.airports[b.h2].flightsCount || 0);
+                return scoreB - scoreA;
+            })
+            .slice(0, 5);
+
+        sortedPathsToShow.forEach(path => {
+            const h1 = state.airports[path.h1];
+            const h2 = state.airports[path.h2];
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="hub-name">${fromAp.iata} → ${h1.iata} → ${h2.iata} → ${toAp.iata}</span><span class="hub-count">2 stops</span>`;
+            topHubsList.appendChild(li);
+        });
+
+        if (sortedPathsToShow.length === 0) {
+            const li = document.createElement('li');
+            li.innerHTML = `<span class="hub-name">No 2-stop paths found</span>`;
             topHubsList.appendChild(li);
         }
         topHubsContainer.style.display = 'block';
@@ -1463,7 +1762,9 @@ function initParticles() {
             speed: 0.003 + Math.random() * 0.003,
             color: r.type === 'connecting'
                 ? colors.particleConnecting
-                : colors.particleDirect
+                : r.type === 'connecting-2'
+                    ? colors.particleConnecting2
+                    : colors.particleDirect
         });
     });
 
@@ -1568,14 +1869,27 @@ function drawFlightRoutes() {
                 ctx.beginPath();
                 path(feat);
                 ctx.stroke();
+            } else if (r.type === 'connecting-2') {
+                // Leg 3: hub2 → to (dashed red line)
+                ctx.setLineDash([5, 6]);
+                ctx.strokeStyle = themeColors.routeConnecting2Stroke;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                path(feat);
+                ctx.stroke();
             }
         } else {
             const isConnecting = r.type === 'connecting';
+            const isConnecting2 = r.type === 'connecting-2';
 
-            if (!hasFilter || isConnecting) {
+            if (!hasFilter || isConnecting || isConnecting2) {
                 if (isConnecting) {
                     ctx.setLineDash([5, 6]);
                     ctx.strokeStyle = themeColors.routeConnectingStroke;
+                    ctx.lineWidth = 1.2;
+                } else if (isConnecting2) {
+                    ctx.setLineDash([5, 6]);
+                    ctx.strokeStyle = themeColors.routeConnecting2Stroke;
                     ctx.lineWidth = 1.2;
                 } else {
                     ctx.setLineDash([]);
