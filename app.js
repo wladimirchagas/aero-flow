@@ -1037,9 +1037,9 @@ function drawAirports() {
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.fillStyle = state.activeFilter.type === 'location'
-        ? themeColors.airportActive
+        ? themeColors.airportActive  // cyan dots on pink direct routes
         : state.activeFilter.type === 'airline'
-            ? themeColors.routeAirline
+            ? themeColors.airportActive  // cyan dots — contrasts against amber route lines
             : themeColors.airportBase;
     const dotRadius = state.activeFilter.type ? 2 : 1.5;
 
