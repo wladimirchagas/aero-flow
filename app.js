@@ -861,7 +861,7 @@ function initParticles() {
             progress: Math.random(),
             speed: 0.003 + Math.random() * 0.003,
             color: r.type === 'connecting'
-                ? 'rgba(255, 51, 119, 0.6)' // muted pink for 1-stop particles
+                ? 'rgba(148, 103, 255, 0.75)' // violet for 1-stop particles
                 : (state.activeFilter.type === 'location' ? themeColors.particlePink : themeColors.particleAirline)
         });
     });
@@ -942,7 +942,7 @@ function drawFlightRoutes() {
         if (!hasFilter || isConnecting) {
             if (isConnecting) {
                 ctx.setLineDash([3, 4]);
-                ctx.strokeStyle = 'rgba(255, 51, 119, 0.2)'; // muted pink dashes — distinct from cyan airport dots
+                ctx.strokeStyle = 'rgba(148, 103, 255, 0.35)'; // soft violet dashes — distinct from pink direct routes
                 ctx.lineWidth = 0.9;
             } else {
                 ctx.setLineDash([]);
