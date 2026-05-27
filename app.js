@@ -985,8 +985,26 @@ function setLocationFilter(apIdx) {
             });
         });
 
-        connectingRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
-        state.activeRoutes.push(...connectingRoutes.slice(0, 250));
+        // Group routes by destination to eliminate massive multi-hub redundancies
+        const routesByDest = {};
+        connectingRoutes.forEach(r => {
+            const destIata = r.dst.iata;
+            if (!routesByDest[destIata]) {
+                routesByDest[destIata] = [];
+            }
+            routesByDest[destIata].push(r);
+        });
+
+        // Keep up to 3 best paths (sorted by hub traffic) for each unique destination
+        const cappedRoutes = [];
+        Object.values(routesByDest).forEach(routes => {
+            routes.sort((a, b) => b.src.flightsCount - a.src.flightsCount);
+            cappedRoutes.push(...routes.slice(0, 3));
+        });
+
+        // Sort by destination traffic and slice at 600 to show comprehensive intercontinental connections
+        cappedRoutes.sort((a, b) => b.dst.flightsCount - a.dst.flightsCount);
+        state.activeRoutes.push(...cappedRoutes.slice(0, 600));
     }
 
     // PERF: pre-build route geometry
