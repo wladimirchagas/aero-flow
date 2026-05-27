@@ -57,9 +57,9 @@
                             <i data-lucide="search" class="search-icon"></i>
                             <input type="text" id="airline-search" placeholder="Search airline (e.g. Qantas, French Bee)..." autocomplete="off">
                             <button class="clear-input-btn" id="clear-airline" style="display: none;">&times;</button>
+                            <!-- Autocomplete Suggestions -->
+                            <div class="autocomplete-list" id="airline-suggestions"></div>
                         </div>
-                        <!-- Autocomplete Suggestions -->
-                        <div class="autocomplete-list" id="airline-suggestions"></div>
                     </div>
 
                     <!-- Location Search Inputs -->
@@ -70,9 +70,9 @@
                             <i data-lucide="map-pin" class="search-icon"></i>
                             <input type="text" id="location-search" placeholder="Search airport or city (e.g. Paris)..." autocomplete="off">
                             <button class="clear-input-btn" id="clear-location" style="display: none;">&times;</button>
+                            <!-- Autocomplete Suggestions (From) -->
+                            <div class="autocomplete-list" id="location-suggestions"></div>
                         </div>
-                        <!-- Autocomplete Suggestions (From) -->
-                        <div class="autocomplete-list" id="location-suggestions"></div>
 
                         <!-- Selected From chip -->
                         <div class="loc-selected-chip" id="loc-from-chip" style="display: none;">
@@ -94,9 +94,9 @@
                             <i data-lucide="navigation" class="search-icon"></i>
                             <input type="text" id="location-to-search" placeholder="Destination airport or city..." autocomplete="off">
                             <button class="clear-input-btn" id="clear-location-to" style="display: none;">&times;</button>
+                            <!-- Autocomplete Suggestions (To) -->
+                            <div class="autocomplete-list" id="location-to-suggestions"></div>
                         </div>
-                        <!-- Autocomplete Suggestions (To) -->
-                        <div class="autocomplete-list" id="location-to-suggestions"></div>
 
                         <!-- Selected To chip -->
                         <div class="loc-selected-chip loc-selected-chip--to" id="loc-to-chip" style="display: none;">
