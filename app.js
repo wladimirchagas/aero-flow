@@ -1134,7 +1134,7 @@ function setLocationFilter(apIdx) {
                         if (r[0] === hub2Idx) destIdx = r[1];
                         else if (r[1] === hub2Idx) destIdx = r[0];
 
-                        if (destIdx !== null && destIdx !== apIdx && !directConnectedSet.has(destIdx) && !activeLevel2Set.has(destIdx)) {
+                        if (destIdx !== null && destIdx !== apIdx && !directConnectedSet.has(destIdx)) {
                             const key = `${hub2Idx}-${destIdx}`;
                             if (!seenLevel3.has(key)) {
                                 seenLevel3.add(key);
