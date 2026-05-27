@@ -976,18 +976,16 @@ function drawFlightRoutes() {
     // --- Bucket A: no shadow ---
     ctx.save();
     ctx.shadowBlur = 0;
-    ctx.setLineDash([]);
 
     state.activeRouteFeatures.forEach((feat, i) => {
         const r = state.activeRoutes[i];
         const isConnecting = r.type === 'connecting';
-        const isDirect = !isConnecting;
 
         if (!hasFilter || isConnecting) {
             if (isConnecting) {
-                ctx.setLineDash([3, 4]);
-                ctx.strokeStyle = 'rgba(148, 103, 255, 0.35)'; // soft violet dashes — distinct from pink direct routes
-                ctx.lineWidth = 0.9;
+                ctx.setLineDash([5, 6]);
+                ctx.strokeStyle = 'rgba(148, 103, 255, 0.55)';
+                ctx.lineWidth = 1.2;
             } else {
                 ctx.setLineDash([]);
                 ctx.strokeStyle = themeColors.routeInactive;
