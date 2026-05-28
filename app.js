@@ -76,6 +76,7 @@ const state = {
 
     // PERF: animateRotation in flight flag
     rotationAnimating: false,
+    cameraAnimFrameId: null,
 };
 
 // Canvas colour palettes — swapped on theme toggle
@@ -294,6 +295,7 @@ function setupInteractions() {
 
     // Drag control
     canvas.addEventListener('mousedown', (e) => {
+        clearActiveRegionButtons();
         state.isDragging = true;
         state.dragStart = [e.clientX, e.clientY];
         state.dragRotationStart = [...state.rotation];
@@ -345,6 +347,7 @@ function setupInteractions() {
 
     // Zoom control
     canvas.addEventListener('wheel', (e) => {
+        clearActiveRegionButtons();
         e.preventDefault();
         const zoomSensitivity = 0.08;
 
@@ -541,28 +544,40 @@ function initUI() {
 
     // 4. Floating HUD Control buttons
     document.getElementById('ctrl-zoom-in').addEventListener('click', () => {
+        clearActiveRegionButtons();
         state.zoom = Math.min(5, state.zoom + 0.2);
         setupProjections();
         markDirty();
     });
 
     document.getElementById('ctrl-zoom-out').addEventListener('click', () => {
+        clearActiveRegionButtons();
         state.zoom = Math.max(0.6, state.zoom - 0.2);
         setupProjections();
         markDirty();
     });
 
     document.getElementById('ctrl-reset').addEventListener('click', () => {
-        state.zoom = 1;
-        state.rotation = [0, -20, 0];
-        state.translation = [0, 0];
-        setupProjections();
-        markDirty();
+        animateCameraTo([0, -20, 0], 1.0, [0, 0]);
+        updateActiveRegionButton('atlantic');
     });
 
     const btnAutoRotate = document.getElementById('ctrl-auto-rotate');
     btnAutoRotate.addEventListener('click', () => {
         toggleAutoRotate(!state.autoRotate);
+    });
+
+    // 4b. Focus region dock buttons
+    const regionButtons = document.querySelectorAll('.focus-region-btn');
+    regionButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const regionId = btn.getAttribute('data-region');
+            const target = REGION_COORDINATES[regionId];
+            if (target) {
+                animateCameraTo(target.rotation, target.zoom, target.translation);
+                updateActiveRegionButton(regionId);
+            }
+        });
     });
 
     // 5. Close Pill button
@@ -2298,4 +2313,84 @@ function startAnimationLoop() {
     }
 
     state.animFrameId = requestAnimationFrame(loop);
+}
+
+// ── Region Camera Focus Control ─────────────────────────────────
+const REGION_COORDINATES = {
+    'atlantic': { rotation: [0, -20, 0], zoom: 1.0, translation: [0, 0] },
+    'north-america': { rotation: [100, -40, 0], zoom: 1.0, translation: [0, 0] },
+    'south-america': { rotation: [60, 20, 0], zoom: 1.0, translation: [0, 0] },
+    'europe-africa': { rotation: [-15, -20, 0], zoom: 1.0, translation: [0, 0] },
+    'asia': { rotation: [-100, -35, 0], zoom: 1.0, translation: [0, 0] },
+    'australia': { rotation: [-133, 25, 0], zoom: 1.0, translation: [0, 0] }
+};
+
+function updateActiveRegionButton(regionId) {
+    const buttons = document.querySelectorAll('.focus-region-btn');
+    buttons.forEach(btn => {
+        if (btn.getAttribute('data-region') === regionId) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function clearActiveRegionButtons() {
+    const buttons = document.querySelectorAll('.focus-region-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+}
+
+function animateCameraTo(targetRotation, targetZoom = 1.0, targetTranslation = [0, 0], duration = 800) {
+    // Interrupt any active camera animations
+    if (state.cameraAnimFrameId) {
+        cancelAnimationFrame(state.cameraAnimFrameId);
+    }
+
+    const startRotation = [...state.rotation];
+    const startZoom = state.zoom;
+    const startTranslation = [...state.translation];
+    const startTime = performance.now();
+
+    // Disable auto-rotation if it was active
+    if (state.autoRotate) {
+        toggleAutoRotate(false);
+    }
+
+    state.rotationAnimating = true;
+
+    function step(timestamp) {
+        const elapsed = timestamp - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Easing: Cubic Out (smooth deceleration)
+        const ease = 1 - Math.pow(1 - progress, 3);
+
+        // Interpolate rotation with shortest angular distance wrapping
+        let diffLon = targetRotation[0] - startRotation[0];
+        diffLon = ((diffLon + 180) % 360 + 360) % 360 - 180;
+
+        state.rotation[0] = startRotation[0] + diffLon * ease;
+        state.rotation[1] = startRotation[1] + (targetRotation[1] - startRotation[1]) * ease;
+        state.rotation[2] = startRotation[2] + (targetRotation[2] - startRotation[2]) * ease;
+
+        // Interpolate zoom
+        state.zoom = startZoom + (targetZoom - startZoom) * ease;
+
+        // Interpolate translation
+        state.translation[0] = startTranslation[0] + (targetTranslation[0] - startTranslation[0]) * ease;
+        state.translation[1] = startTranslation[1] + (targetTranslation[1] - startTranslation[1]) * ease;
+
+        setupProjections();
+        markDirty();
+
+        if (progress < 1) {
+            state.cameraAnimFrameId = requestAnimationFrame(step);
+        } else {
+            state.rotationAnimating = false;
+            state.cameraAnimFrameId = null;
+        }
+    }
+
+    state.cameraAnimFrameId = requestAnimationFrame(step);
 }
