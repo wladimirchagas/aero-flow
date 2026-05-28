@@ -61,6 +61,8 @@ const state = {
     particles: [], // animating planes
     selectedAirportIndex: null,
     hoveredItem: null, // airport or route under cursor
+    hoveredHubIndex: null, // hub airport index for path highlighting on sidebar hover
+    hoveredPath: null, // exact path object for 2-stop highlighting on sidebar hover
 
     // PERF: cached static geometry
     graticuleGeometry: null,
@@ -1465,6 +1467,14 @@ function applyPointToPointFilter(fromIdx, toIdx) {
         sortedHubs.forEach(hub => {
             const li = document.createElement('li');
             li.innerHTML = `<span class="hub-name">${hub.city} (${hub.iata})</span><span class="hub-count">via hub</span>`;
+            li.addEventListener('mouseenter', () => {
+                state.hoveredHubIndex = state.airports.indexOf(hub);
+                markDirty();
+            });
+            li.addEventListener('mouseleave', () => {
+                state.hoveredHubIndex = null;
+                markDirty();
+            });
             topHubsList.appendChild(li);
         });
 
@@ -1494,6 +1504,14 @@ function applyPointToPointFilter(fromIdx, toIdx) {
             const h2 = state.airports[path.h2];
             const li = document.createElement('li');
             li.innerHTML = `<span class="hub-name">${fromAp.iata} → ${h1.iata} → ${h2.iata} → ${toAp.iata}</span><span class="hub-count">2 stops</span>`;
+            li.addEventListener('mouseenter', () => {
+                state.hoveredPath = path;
+                markDirty();
+            });
+            li.addEventListener('mouseleave', () => {
+                state.hoveredPath = null;
+                markDirty();
+            });
             topHubsList.appendChild(li);
         });
 
@@ -1802,6 +1820,98 @@ function render() {
     drawAirports();
 }
 
+function getHighlightedRoutes() {
+    const highlighted = new Set();
+    if (!state.activeFilter || state.activeFilter.type !== 'location' || state.activeFilter.value === null) {
+        return highlighted;
+    }
+    
+    // 1. If we hovered over a list item hub
+    if (state.hoveredHubIndex !== null) {
+        const hub = state.airports[state.hoveredHubIndex];
+        const fromAp = state.airports[state.activeFilter.value];
+        state.activeRoutes.forEach(r => {
+            const isLeg1 = (r.src.iata === fromAp.iata && r.dst.iata === hub.iata) || (r.src.iata === hub.iata && r.dst.iata === fromAp.iata);
+            const isLeg2 = (r.src.iata === hub.iata) || (r.dst.iata === hub.iata);
+            if (isLeg1 || isLeg2) {
+                highlighted.add(r);
+            }
+        });
+        return highlighted;
+    }
+    
+    // 2. If we hovered over a 2-stop path in the list
+    if (state.hoveredPath) {
+        const p = state.hoveredPath;
+        const fromAp = state.airports[state.activeFilter.value];
+        const h1 = state.airports[p.h1];
+        const h2 = state.airports[p.h2];
+        const toAp = state.locationToIndex !== null ? state.airports[state.locationToIndex] : null;
+        
+        state.activeRoutes.forEach(r => {
+            const matchesSegment = (r.src.iata === fromAp.iata && r.dst.iata === h1.iata) ||
+                                   (r.src.iata === h1.iata && r.dst.iata === h2.iata) ||
+                                   (r.src.iata === h2.iata && toAp && r.dst.iata === toAp.iata);
+            if (matchesSegment) {
+                highlighted.add(r);
+            }
+        });
+        return highlighted;
+    }
+    
+    // 3. If we hovered over an airport on the map (interactive map hover!)
+    if (state.hoveredItem && state.hoveredItem.iata) {
+        const hoveredAp = state.hoveredItem;
+        const fromAp = state.airports[state.activeFilter.value];
+        if (hoveredAp.iata === fromAp.iata) return highlighted; // Hovering origin
+        
+        // Find if this hovered airport is directly connected or is a connection destination
+        const isDirectDest = state.activeRoutes.some(r => 
+            r.type === 'direct' && ((r.src.iata === fromAp.iata && r.dst.iata === hoveredAp.iata) || (r.src.iata === hoveredAp.iata && r.dst.iata === fromAp.iata))
+        );
+        
+        if (isDirectDest) {
+            // Highlight direct route
+            state.activeRoutes.forEach(r => {
+                if (r.type === 'direct' && ((r.src.iata === fromAp.iata && r.dst.iata === hoveredAp.iata) || (r.src.iata === hoveredAp.iata && r.dst.iata === fromAp.iata))) {
+                    highlighted.add(r);
+                }
+            });
+        } else {
+            // Find connecting paths ending at hoveredAp
+            const hubs = new Set();
+            state.activeRoutes.forEach(r => {
+                if (r.type === 'connecting' && r.dst.iata === hoveredAp.iata) {
+                    hubs.add(r.src.iata);
+                    highlighted.add(r); // Leg 2
+                }
+                if (r.type === 'connecting-2' && r.dst.iata === hoveredAp.iata) {
+                    highlighted.add(r); // Leg 3
+                    hubs.add(r.src.iata);
+                }
+            });
+            
+            // Now highlight the legs connecting fromAp to those hubs
+            state.activeRoutes.forEach(r => {
+                if (r.type === 'direct' && hubs.has(r.dst.iata)) {
+                    highlighted.add(r); // Leg 1
+                }
+                if (r.type === 'connecting' && hubs.has(r.dst.iata)) {
+                    highlighted.add(r); // Leg 2 for 2-stop
+                    // Also need Leg 1 for that hub
+                    state.activeRoutes.forEach(r2 => {
+                        if (r2.type === 'direct' && r2.dst.iata === r.src.iata) {
+                            highlighted.add(r2);
+                        }
+                    });
+                }
+            });
+        }
+    }
+    
+    return highlighted;
+}
+
 function drawFlightRoutes() {
     const ctx = state.ctx;
     const path = state.path;
@@ -1812,10 +1922,8 @@ function drawFlightRoutes() {
     const fromAp = isP2P ? state.airports[state.selectedAirportIndex] : null;
     const toAp = isP2P ? state.airports[state.locationToIndex] : null;
 
-    // PERF: separate routes into two buckets (glow / no-glow) and draw each bucket
-    // in a single save/restore block to minimise Canvas state changes.
-    // Bucket A: inactive / connecting / dashed routes (no shadow blur)
-    // Bucket B: active direct solid routes (shadow glow)
+    const highlightedSet = getHighlightedRoutes();
+    const isHoverActive = highlightedSet.size > 0;
 
     // --- Bucket A: 1-stop connecting / dashed routes (no glow) ---
     ctx.save();
@@ -1833,12 +1941,27 @@ function drawFlightRoutes() {
                 // Will draw this in Bucket B (solid green with glow)
                 return;
             }
+        }
 
+        ctx.save();
+        let isHighlighted = isHoverActive && highlightedSet.has(r);
+        if (isHoverActive) {
+            if (!isHighlighted) {
+                ctx.globalAlpha = 0.12;
+            } else {
+                ctx.globalAlpha = 1.0;
+                ctx.lineWidth = 2.0;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = r.type === 'direct' ? themeColors.routeDirectGlow : (r.type === 'connecting' ? themeColors.routeConnectingGlow : themeColors.routeConnecting2Glow);
+            }
+        }
+
+        if (isP2P) {
             if (r.type === 'direct') {
                 // Leg 1: from → hub (dashed green line)
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = themeColors.routeDirect;
-                ctx.lineWidth = 1.2;
+                if (!isHoverActive) ctx.lineWidth = 1.2;
                 ctx.beginPath();
                 path(feat);
                 ctx.stroke();
@@ -1846,7 +1969,7 @@ function drawFlightRoutes() {
                 // Leg 2: hub → to (dashed yellow line)
                 ctx.setLineDash([5, 6]);
                 ctx.strokeStyle = themeColors.routeConnectingStroke;
-                ctx.lineWidth = 1.2;
+                if (!isHoverActive) ctx.lineWidth = 1.2;
                 ctx.beginPath();
                 path(feat);
                 ctx.stroke();
@@ -1854,7 +1977,7 @@ function drawFlightRoutes() {
                 // Leg 3: hub2 → to (dashed red line)
                 ctx.setLineDash([5, 6]);
                 ctx.strokeStyle = themeColors.routeConnecting2Stroke;
-                ctx.lineWidth = 1.2;
+                if (!isHoverActive) ctx.lineWidth = 1.2;
                 ctx.beginPath();
                 path(feat);
                 ctx.stroke();
@@ -1867,21 +1990,22 @@ function drawFlightRoutes() {
                 if (isConnecting) {
                     ctx.setLineDash([5, 6]);
                     ctx.strokeStyle = themeColors.routeConnectingStroke;
-                    ctx.lineWidth = 1.2;
+                    if (!isHoverActive) ctx.lineWidth = 1.2;
                 } else if (isConnecting2) {
                     ctx.setLineDash([5, 6]);
                     ctx.strokeStyle = themeColors.routeConnecting2Stroke;
-                    ctx.lineWidth = 1.2;
+                    if (!isHoverActive) ctx.lineWidth = 1.2;
                 } else {
                     ctx.setLineDash([]);
                     ctx.strokeStyle = themeColors.routeInactive;
-                    ctx.lineWidth = 0.8;
+                    if (!isHoverActive) ctx.lineWidth = 0.8;
                 }
                 ctx.beginPath();
                 path(feat);
                 ctx.stroke();
             }
         }
+        ctx.restore();
     });
 
     ctx.setLineDash([]);
@@ -1899,6 +2023,19 @@ function drawFlightRoutes() {
         state.activeRouteFeatures.forEach((feat, i) => {
             const r = state.activeRoutes[i];
             
+            ctx.save();
+            let isHighlighted = isHoverActive && highlightedSet.has(r);
+            if (isHoverActive) {
+                if (!isHighlighted) {
+                    ctx.globalAlpha = 0.12;
+                } else {
+                    ctx.globalAlpha = 1.0;
+                    ctx.lineWidth = 2.5;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = themeColors.routeDirectGlow;
+                }
+            }
+
             if (isP2P) {
                 const isDirectP2P = fromAp && toAp && (
                     (r.src.iata === fromAp.iata && r.dst.iata === toAp.iata) ||
@@ -1916,6 +2053,7 @@ function drawFlightRoutes() {
                     ctx.stroke();
                 }
             }
+            ctx.restore();
         });
 
         ctx.shadowBlur = 0;
