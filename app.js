@@ -374,6 +374,22 @@ function setupInteractions() {
         setupProjections();
         markDirty();
     }, { passive: false });
+
+    // Click control to select airports on D3 canvas
+    canvas.addEventListener('click', (e) => {
+        if (!state.dragStart) return;
+        const dx = e.clientX - state.dragStart[0];
+        const dy = e.clientY - state.dragStart[1];
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // If the mouse barely moved, register it as a click rather than a drag
+        if (dist < 5 && state.hoveredItem) {
+            const apIdx = state.airports.indexOf(state.hoveredItem);
+            if (apIdx !== -1) {
+                handleAirportClick(apIdx);
+            }
+        }
+    });
 }
 
 // PERF: dirty-flag helper — marks the scene as needing a repaint
@@ -444,10 +460,7 @@ async function loadData() {
             loadingScreen.style.opacity = 0;
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
-                if (state.leafletMap) {
-                    state.leafletMap.invalidateSize();
-                    updateLeafletLayers();
-                }
+                markDirty();
                 // Trigger animation loop
                 startAnimationLoop();
             }, 500);
@@ -547,19 +560,12 @@ function initUI() {
         btnFlat.classList.remove('active');
         projInfo.innerText = "Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.";
         
-        // Show Canvas, Hide Leaflet
+        // Always display Canvas
         document.getElementById('mapCanvas').style.display = 'block';
         document.getElementById('leafletMap').style.display = 'none';
 
         // Hide satellite checkbox panel in 3D mode
         document.getElementById('sat-toggle-box').style.display = 'none';
-
-        // Synchronize Leaflet view to D3 rotation
-        if (state.leafletMap) {
-            const center = state.leafletMap.getCenter();
-            state.rotation = [-center.lng, -center.lat, 0];
-            state.zoom = Math.max(0.6, state.leafletMap.getZoom() - 1);
-        }
 
         setupProjections();
         markDirty();
@@ -572,24 +578,15 @@ function initUI() {
         btnGlobe.classList.remove('active');
         projInfo.innerText = "2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.";
         
-        // Hide Canvas, Show Leaflet
-        document.getElementById('mapCanvas').style.display = 'none';
-        document.getElementById('leafletMap').style.display = 'block';
+        // Always display Canvas
+        document.getElementById('mapCanvas').style.display = 'block';
+        document.getElementById('leafletMap').style.display = 'none';
 
         // Show satellite checkbox panel in 2D mode
         document.getElementById('sat-toggle-box').style.display = 'flex';
 
-        // Synchronize D3 rotation to Leaflet center
-        const lat = -state.rotation[1];
-        const lon = -state.rotation[0];
-        const leafletZoom = Math.max(1, Math.min(19, Math.round(state.zoom + 1)));
-
-        if (state.leafletMap) {
-            state.leafletMap.setView([lat, lon], leafletZoom);
-            // Refresh layers to reflect current active filter
-            updateLeafletLayers();
-            state.leafletMap.invalidateSize();
-        }
+        setupProjections();
+        markDirty();
     });
 
     // Wire up Satellite Imagery checkbox change listener
@@ -1890,12 +1887,19 @@ function render() {
     // 1. Clear Screen
     ctx.clearRect(0, 0, state.width, state.height);
 
+    // 1.5. Draw Satellite Imagery if active
+    if (state.satelliteActive) {
+        drawSatelliteTiles();
+    }
+
     // 2. Draw Sphere Background (Globe mode only)
     if (state.projectionType === 'globe') {
-        ctx.beginPath();
-        path({ type: 'Sphere' });
-        ctx.fillStyle = themeColors.ocean;
-        ctx.fill();
+        if (!state.satelliteActive) {
+            ctx.beginPath();
+            path({ type: 'Sphere' });
+            ctx.fillStyle = themeColors.ocean;
+            ctx.fill();
+        }
 
         // PERF: use cached graticule geometry instead of recalculating every frame
         ctx.beginPath();
@@ -1909,8 +1913,11 @@ function render() {
     if (state.countriesGeoJSON) {
         ctx.beginPath();
         path(state.countriesGeoJSON);
-        ctx.fillStyle = themeColors.landFill;
-        ctx.fill();
+        
+        if (!state.satelliteActive) {
+            ctx.fillStyle = themeColors.landFill;
+            ctx.fill();
+        }
 
         ctx.strokeStyle = themeColors.landStroke;
         ctx.lineWidth = 0.7;
@@ -2503,232 +2510,17 @@ function animateCameraTo(targetRotation, targetZoom = 1.0, targetTranslation = [
     state.cameraAnimFrameId = requestAnimationFrame(step);
 }
 
-// ── Leaflet Satellite Basemap Integration (Option 2) ──────────
+// ── D3 Satellite Tiles Integration (Option 2 under True-to-Earth Projections) ──
 function initLeafletMap() {
-    state.leafletMap = L.map('leafletMap', {
-        zoomControl: false,
-        attributionControl: false,
-        worldCopyJump: true
-    }).setView([20, 0], 2);
-
-    // Create Esri World Imagery layer once, but do NOT add to map yet (vector is default!)
-    state.leafletSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    });
-
-    // Sync initial DOM display visibility based on default projection type
-    if (state.projectionType === 'flat') {
-        document.getElementById('mapCanvas').style.display = 'none';
-        document.getElementById('leafletMap').style.display = 'block';
-        // Force Leaflet to recalculate its full viewport bounds
-        setTimeout(() => {
-            if (state.leafletMap) state.leafletMap.invalidateSize();
-        }, 150);
-    } else {
-        document.getElementById('mapCanvas').style.display = 'block';
-        document.getElementById('leafletMap').style.display = 'none';
-    }
-
-    // Initial layer sync
-    updateLeafletLayers();
+    // Canvas is our only engine now. We ensure Leaflet elements remain hidden.
+    const mapCanvas = document.getElementById('mapCanvas');
+    const leafletMapEl = document.getElementById('leafletMap');
+    if (mapCanvas) mapCanvas.style.display = 'block';
+    if (leafletMapEl) leafletMapEl.style.display = 'none';
 }
 
 function updateLeafletLayers() {
-    if (!state.leafletMap) return;
-
-    const colors = getThemeColors();
-
-    // 1. Rebuild / Sync Satellite tiles layer
-    if (state.satelliteActive) {
-        if (!state.leafletMap.hasLayer(state.leafletSatelliteLayer)) {
-            state.leafletSatelliteLayer.addTo(state.leafletMap);
-        }
-    } else {
-        if (state.leafletMap.hasLayer(state.leafletSatelliteLayer)) {
-            state.leafletMap.removeLayer(state.leafletSatelliteLayer);
-        }
-    }
-
-    // 2. Rebuild / Sync Vector Landmasses layer (only visible when Satellite mode is OFF)
-    if (state.leafletVectorLayer) {
-        state.leafletMap.removeLayer(state.leafletVectorLayer);
-    }
-
-    if (!state.satelliteActive && state.countriesGeoJSON) {
-        try {
-            state.leafletVectorLayer = L.geoJSON(state.countriesGeoJSON, {
-                style: function() {
-                    return {
-                        fillColor: colors.landFill,
-                        fillOpacity: 1.0,
-                        color: colors.landStroke,
-                        weight: 0.7,
-                        opacity: 1.0
-                    };
-                }
-            }).addTo(state.leafletMap);
-        } catch (error) {
-            console.error("Failed to parse or add countriesGeoJSON to Leaflet map:", error);
-        }
-        
-        // Sync map background container with theme ocean color
-        state.leafletMap.getContainer().style.background = colors.ocean;
-    } else {
-        // Satellite active: use pure dark background container
-        state.leafletMap.getContainer().style.background = '#06040a';
-    }
-
-    // 3. Rebuild / Sync Curved geodesic paths layer
-    if (state.leafletRoutesLayer) {
-        state.leafletMap.removeLayer(state.leafletRoutesLayer);
-    }
-
-    const isP2P = state.selectedAirportIndex !== null && state.locationToIndex !== null;
-    const fromAp = isP2P ? state.airports[state.selectedAirportIndex] : null;
-    const toAp = isP2P ? state.airports[state.locationToIndex] : null;
-    const hasFilter = !!state.activeFilter.type;
-
-    try {
-        state.leafletRoutesLayer = L.geoJSON(state.activeRouteFeatures, {
-            style: function(feature) {
-                const routeType = feature.properties.routeType;
-                let strokeColor = colors.routeInactive;
-                let dashArray = null;
-                let weight = 1.0;
-                let opacity = 0.6;
-
-                if (isP2P) {
-                    const isDirectP2P = fromAp && toAp && (
-                        (feature.properties.srcIata === fromAp.iata && feature.properties.dstIata === toAp.iata) ||
-                        (feature.properties.srcIata === toAp.iata && feature.properties.dstIata === fromAp.iata)
-                    );
-                    if (isDirectP2P) {
-                         strokeColor = colors.routeDirect;
-                         weight = 2.5;
-                         opacity = 0.9;
-                    } else if (routeType === 'direct') {
-                         strokeColor = colors.routeDirect;
-                         dashArray = "3, 3";
-                         weight = 1.5;
-                    } else if (routeType === 'connecting') {
-                         strokeColor = colors.routeConnectingStroke;
-                         dashArray = "4, 4";
-                         weight = 1.5;
-                    } else if (routeType === 'connecting-2') {
-                         strokeColor = colors.routeConnecting2Stroke;
-                         dashArray = "4, 4";
-                         weight = 1.5;
-                    }
-                } else {
-                    if (routeType === 'direct') {
-                        strokeColor = colors.routeDirect;
-                        weight = 1.6;
-                        opacity = 0.8;
-                    } else if (routeType === 'connecting') {
-                        strokeColor = colors.routeConnectingStroke;
-                        dashArray = "4, 4";
-                        weight = 1.2;
-                    } else if (routeType === 'connecting-2') {
-                        strokeColor = colors.routeConnecting2Stroke;
-                        dashArray = "4, 4";
-                        weight = 1.2;
-                    } else {
-                        strokeColor = colors.routeInactive;
-                        weight = 0.8;
-                        opacity = 0.25;
-                    }
-                }
-
-                return {
-                    color: strokeColor,
-                    weight: weight,
-                    opacity: opacity,
-                    dashArray: dashArray
-                };
-            }
-        }).addTo(state.leafletMap);
-    } catch (error) {
-        console.error("Failed to parse or add activeRouteFeatures to Leaflet map:", error);
-    }
-
-    // 2. Rebuild / Sync Interactive Airport circle markers layer
-    if (state.leafletAirportsLayer) {
-        state.leafletMap.removeLayer(state.leafletAirportsLayer);
-    }
-
-    const airportMarkers = [];
-    state.airports.forEach((ap, idx) => {
-        if (state.activeAirportsSet && !state.activeAirportsSet.has(ap)) return;
-        
-        const isSelectedFrom = state.selectedAirportIndex === idx;
-        const isSelectedTo = state.locationToIndex === idx;
-        
-        let radius = hasFilter ? 3.5 : 2.5;
-        let color = colors.airportBase;
-        let fillOpacity = 0.85;
-
-        if (isSelectedFrom || isSelectedTo) {
-            radius = 6;
-            color = colors.routeLocation;
-            fillOpacity = 1.0;
-        }
-
-        const marker = L.circleMarker([ap.lat, ap.lon], {
-            radius: radius,
-            fillColor: color,
-            color: isSelectedFrom || isSelectedTo ? '#ffffff' : color,
-            weight: isSelectedFrom || isSelectedTo ? 1.8 : 0.5,
-            fillOpacity: fillOpacity
-        });
-
-        // Glassmorphic interactive tooltip mapping
-        marker.bindTooltip(`
-            <div style="font-family: sans-serif; font-size: 11px; line-height: 1.4;">
-                <strong style="color: var(--color-cyan); font-size: 12px; display: block; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 2px; margin-bottom: 2px;">
-                    ${ap.city} (${ap.iata})
-                </strong>
-                <span style="color: #ffffff; display: block; font-weight: 500;">${ap.name}</span>
-                <span style="color: var(--color-text-secondary); font-size: 10px; display: block;">Country: ${ap.country}</span>
-                <span style="color: var(--color-cyan); font-size: 10px; display: block; font-weight: 600;">${ap.flightsCount} global flights</span>
-            </div>
-        `, { sticky: true, className: 'leaflet-tooltip-glass' });
-
-        marker.on('click', () => {
-            handleAirportClick(idx);
-        });
-
-        airportMarkers.push(marker);
-    });
-
-    state.leafletAirportsLayer = L.layerGroup(airportMarkers).addTo(state.leafletMap);
-
-    // 3. Rebuild / Sync Particles layer
-    initLeafletParticles();
-}
-
-function initLeafletParticles() {
-    if (!state.leafletMap) return;
-
-    if (state.leafletParticlesLayer) {
-        state.leafletMap.removeLayer(state.leafletParticlesLayer);
-    }
-
-    const markers = [];
-    state.particles.forEach(p => {
-        const currentCoords = p.interpolator(p.progress);
-        const marker = L.circleMarker([currentCoords[1], currentCoords[0]], {
-            radius: 3,
-            fillColor: p.color,
-            color: p.color,
-            weight: 0,
-            fillOpacity: 0.95
-        });
-        p.leafletMarker = marker;
-        markers.push(marker);
-    });
-
-    state.leafletParticlesLayer = L.layerGroup(markers).addTo(state.leafletMap);
+    markDirty(); // Simply repaint the D3 canvas
 }
 
 function handleAirportClick(apIdx) {
@@ -2746,6 +2538,199 @@ function handleAirportClick(apIdx) {
             setLocationToFilter(apIdx);
         }
     }
-    // Update Leaflet markers to highlight active selections instantly
-    updateLeafletLayers();
+    markDirty();
+}
+
+// ── High-Performance D3 Tile Projection & Warp Engine ──────────
+const tileCache = new Map();
+
+function latToTileY(lat, z) {
+    const latRad = Math.max(-85.0511, Math.min(85.0511, lat)) * Math.PI / 180;
+    const n = Math.pow(2, z);
+    const y = (1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n;
+    return Math.max(0, Math.min(n - 1, Math.floor(y)));
+}
+
+function getTileBounds(x, y, z) {
+    const n = Math.pow(2, z);
+    const lonMin = x / n * 360 - 180;
+    const lonMax = (x + 1) / n * 360 - 180;
+    
+    const latMinRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + 1) / n)));
+    const latMaxRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n)));
+    
+    const latMin = latMinRad * 180 / Math.PI;
+    const latMax = latMaxRad * 180 / Math.PI;
+    
+    return { lonMin, lonMax, latMin, latMax };
+}
+
+function getTileImage(x, y, z) {
+    const key = `${z}/${y}/${x}`;
+    if (tileCache.has(key)) {
+        return tileCache.get(key);
+    }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+    
+    const tileState = {
+        image: img,
+        loaded: false,
+        failed: false
+    };
+    
+    img.onload = () => {
+        tileState.loaded = true;
+        markDirty(); // Trigger canvas redraw
+    };
+    
+    img.onerror = () => {
+        tileState.failed = true;
+    };
+    
+    tileCache.set(key, tileState);
+    return tileState;
+}
+
+function drawTexturedTriangle(ctx, img, x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2) {
+    ctx.save();
+    
+    // Draw triangular clipping path
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.closePath();
+    ctx.clip();
+    
+    // Affine transformation matrix calculation
+    const delta = u0 * (v1 - v2) + u1 * (v2 - v0) + u2 * (v0 - v1);
+    if (Math.abs(delta) < 0.0001) {
+        ctx.restore();
+        return;
+    }
+    
+    const a = (x0 * (v1 - v2) + x1 * (v2 - v0) + x2 * (v0 - v1)) / delta;
+    const b = (y0 * (v1 - v2) + y1 * (v2 - v0) + y2 * (v0 - v1)) / delta;
+    const c = (x0 * (u2 - u1) + x1 * (u0 - u2) + x2 * (u1 - u0)) / delta;
+    const d = (y0 * (u2 - u1) + y1 * (u0 - u2) + y2 * (u1 - u0)) / delta;
+    const e = (x0 * (u1 * v2 - u2 * v1) + x1 * (u2 * v0 - u0 * v2) + x2 * (u0 * v1 - u1 * v0)) / delta;
+    const f = (y0 * (u1 * v2 - u2 * v1) + y1 * (u2 * v0 - u0 * v2) + y2 * (u0 * v1 - u1 * v0)) / delta;
+    
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+}
+
+function drawSatelliteTiles() {
+    const ctx = state.ctx;
+    
+    // Determine the optimal tile zoom level Z based on canvas scale and zoom factor
+    const scaleValue = state.projectionType === 'globe' ? state.scale.globe : state.scale.flat;
+    const worldWidth = scaleValue * state.zoom * 2 * Math.PI;
+    const zDouble = Math.log2(worldWidth / 256);
+    // Clamp Z between 0 and 7 (Z=7 provides excellent resolution for 50x zooms)
+    const z = Math.max(0, Math.min(7, Math.floor(zDouble)));
+    const n = Math.pow(2, z);
+    
+    // Find visible tile bounds
+    let lonMin = 180, lonMax = -180;
+    let latMin = 85.0511, latMax = -85.0511;
+    let hasValidPoint = false;
+    
+    // Scan a grid of points on the screen to invert and check visible coordinates
+    const stepX = state.width / 4;
+    const stepY = state.height / 4;
+    for (let px = 0; px <= state.width; px += stepX) {
+        for (let py = 0; py <= state.height; py += stepY) {
+            const inv = state.projection.invert([px, py]);
+            if (inv && !isNaN(inv[0]) && !isNaN(inv[1])) {
+                let lon = inv[0];
+                let lat = inv[1];
+                
+                // Keep longitude within standard [-180, 180] boundary
+                lon = ((lon + 180) % 360 + 360) % 360 - 180;
+                
+                lonMin = Math.min(lonMin, lon);
+                lonMax = Math.max(lonMax, lon);
+                latMin = Math.min(latMin, lat);
+                latMax = Math.max(latMax, lat);
+                hasValidPoint = true;
+            }
+        }
+    }
+    
+    let xStart = 0, xEnd = n - 1;
+    let yStart = 0, yEnd = n - 1;
+    
+    if (hasValidPoint && (lonMax - lonMin < 340)) {
+        latMin = Math.max(-85.0511, Math.min(85.0511, latMin));
+        latMax = Math.max(-85.0511, Math.min(85.0511, latMax));
+        
+        xStart = Math.max(0, Math.min(n - 1, Math.floor((lonMin + 180) / 360 * n)));
+        xEnd = Math.max(0, Math.min(n - 1, Math.floor((lonMax + 180) / 360 * n)));
+        
+        yStart = latToTileY(latMax, z);
+        yEnd = latToTileY(latMin, z);
+        
+        if (xStart > xEnd) {
+            // Wrapped around date line
+            xStart = 0;
+            xEnd = n - 1;
+        }
+    }
+    
+    // Draw the visible tiles with smooth subdivisions to match Equal Earth curves
+    const N = 2; // Subdivide tile into 2x2 grid (8 triangles)
+    for (let x = xStart; x <= xEnd; x++) {
+        for (let y = yStart; y <= yEnd; y++) {
+            const bounds = getTileBounds(x, y, z);
+            const tile = getTileImage(x, y, z);
+            if (!tile.loaded || tile.failed) continue;
+            
+            for (let i = 0; i < N; i++) {
+                for (let j = 0; j < N; j++) {
+                    const lon0 = bounds.lonMin + i * (bounds.lonMax - bounds.lonMin) / N;
+                    const lon1 = bounds.lonMin + (i + 1) * (bounds.lonMax - bounds.lonMin) / N;
+                    const lat0 = bounds.latMax - j * (bounds.latMax - bounds.latMin) / N;
+                    const lat1 = bounds.latMax - (j + 1) * (bounds.latMax - bounds.latMin) / N;
+                    
+                    const pTL = state.projection([lon0, lat0]);
+                    const pTR = state.projection([lon1, lat0]);
+                    const pBR = state.projection([lon1, lat1]);
+                    const pBL = state.projection([lon0, lat1]);
+                    
+                    if (!pTL || !pTR || !pBR || !pBL) continue;
+                    
+                    // In 3D Globe mode, discard points that are on the back-face of the orthographic projection
+                    if (state.projectionType === 'globe') {
+                        const cTL = d3.geoDistance([lon0, lat0], [-state.rotation[0], -state.rotation[1]]);
+                        const cTR = d3.geoDistance([lon1, lat0], [-state.rotation[0], -state.rotation[1]]);
+                        const cBR = d3.geoDistance([lon1, lat1], [-state.rotation[0], -state.rotation[1]]);
+                        const cBL = d3.geoDistance([lon0, lat1], [-state.rotation[0], -state.rotation[1]]);
+                        // Orthographic clipping limit is PI/2 (90 degrees)
+                        const limit = Math.PI / 2;
+                        if (cTL > limit || cTR > limit || cBR > limit || cBL > limit) continue;
+                    }
+                    
+                    const u0 = i * 256 / N;
+                    const u1 = (i + 1) * 256 / N;
+                    const v0 = j * 256 / N;
+                    const v1 = (j + 1) * 256 / N;
+                    
+                    // Triangle 1: TL, TR, BL
+                    drawTexturedTriangle(ctx, tile.image, 
+                        pTL[0], pTL[1], pTR[0], pTR[1], pBL[0], pBL[1],
+                        u0, v0, u1, v0, u0, v1
+                    );
+                    // Triangle 2: TR, BR, BL
+                    drawTexturedTriangle(ctx, tile.image, 
+                        pTR[0], pTR[1], pBR[0], pBR[1], pBL[0], pBL[1],
+                        u1, v0, u1, v1, u0, v1
+                    );
+                }
+            }
+        }
+    }
 }
