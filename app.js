@@ -565,8 +565,8 @@ function initUI() {
         const leafletMapEl = document.getElementById('leafletMap');
         if (leafletMapEl) leafletMapEl.style.display = 'none';
 
-        // Hide satellite checkbox panel in 3D mode
-        document.getElementById('sat-toggle-box').style.display = 'none';
+        // Keep satellite checkbox panel visible in 3D mode
+        document.getElementById('sat-toggle-box').style.display = 'flex';
 
         setupProjections();
         markDirty();
@@ -2745,14 +2745,34 @@ function drawSatelliteTiles() {
     const scaleValue = state.projectionType === 'globe' ? state.scale.globe : state.scale.flat;
     const worldWidth = scaleValue * state.zoom * 2 * Math.PI;
     // Clamp Z between 0 and 12 for high-resolution detailed zoom views
+    const zDouble = Math.log2(worldWidth / 256);
     const z = Math.max(0, Math.min(12, Math.floor(zDouble)));
     const n = Math.pow(2, z);
     
     // Use our high-performance recursive quadtree to find visible tiles at zoom Z
     const visibleTiles = getVisibleTilesAtZoom(z);
     
-    // Subdivide tile into N x N grid to wrap smoothly around curves
-    const N = state.projectionType === 'globe' ? 6 : 4; // 6x6 on globe for smooth curved horizon, 4x4 on flat
+    // Subdivide tile into N x N grid to wrap smoothly around curves.
+    // At low zooms (z <= 3), use a fine 12x12 grid to perfectly align Web Mercator tiles
+    // with the non-linear curvature of D3 Equal Earth / Orthographic projection,
+    // completely eliminating vector outline misalignments (e.g. Spain).
+    // At high zooms (z > 3), use a coarser grid (4x4 or 6x6) for peak performance.
+    let N = 4;
+    if (state.projectionType === 'globe') {
+        N = z <= 3 ? 12 : 6;
+    } else {
+        N = z <= 3 ? 12 : 4;
+    }
+    
+    // Temporarily expand the globe projection's clipAngle to 115 degrees
+    // to allow D3 to project all visible tile vertices near or slightly behind the horizon.
+    // The main canvas rendering Sphere mask will then perfectly clip them to the round boundary.
+    const isGlobe = state.projectionType === 'globe';
+    let oldClipAngle;
+    if (isGlobe && typeof state.projection.clipAngle === 'function') {
+        oldClipAngle = state.projection.clipAngle();
+        state.projection.clipAngle(115);
+    }
     
     visibleTiles.forEach(tileCoords => {
         const x = tileCoords.x;
@@ -2813,4 +2833,9 @@ function drawSatelliteTiles() {
             }
         }
     });
+    
+    // Restore the projection's original clipAngle
+    if (isGlobe && typeof state.projection.clipAngle === 'function') {
+        state.projection.clipAngle(oldClipAngle);
+    }
 }
