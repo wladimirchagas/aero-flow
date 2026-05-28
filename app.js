@@ -562,7 +562,8 @@ function initUI() {
         
         // Always display Canvas
         document.getElementById('mapCanvas').style.display = 'block';
-        document.getElementById('leafletMap').style.display = 'none';
+        const leafletMapEl = document.getElementById('leafletMap');
+        if (leafletMapEl) leafletMapEl.style.display = 'none';
 
         // Hide satellite checkbox panel in 3D mode
         document.getElementById('sat-toggle-box').style.display = 'none';
@@ -580,7 +581,8 @@ function initUI() {
         
         // Always display Canvas
         document.getElementById('mapCanvas').style.display = 'block';
-        document.getElementById('leafletMap').style.display = 'none';
+        const leafletMapEl = document.getElementById('leafletMap');
+        if (leafletMapEl) leafletMapEl.style.display = 'none';
 
         // Show satellite checkbox panel in 2D mode
         document.getElementById('sat-toggle-box').style.display = 'flex';
