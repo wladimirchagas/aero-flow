@@ -2799,6 +2799,27 @@ function drawSatelliteTiles() {
                 const lat0 = Math.atan(Math.sinh(yMerc0)) * 180 / Math.PI;
                 const lat1 = Math.atan(Math.sinh(yMerc1)) * 180 / Math.PI;
                 
+                // In 3D Globe mode, check if any vertex is on the back-face of the globe.
+                // We allow a tiny threshold (Math.PI / 2 + 0.02) to project slightly beyond 90 degrees
+                // for a perfectly smooth, anti-aliased horizon clipped by the canvas Sphere mask,
+                // but strictly discard anything further to eliminate folding-back overlaps.
+                if (isGlobe) {
+                    const rawCenterLon = -state.rotation[0];
+                    const centerLon = ((rawCenterLon + 180) % 360 + 360) % 360 - 180;
+                    const centerLat = -state.rotation[1];
+                    const centerLonLat = [centerLon, centerLat];
+                    const limit = Math.PI / 2 + 0.02;
+                    
+                    const dTL = d3.geoDistance([lon0, lat0], centerLonLat);
+                    const dTR = d3.geoDistance([lon1, lat0], centerLonLat);
+                    const dBR = d3.geoDistance([lon1, lat1], centerLonLat);
+                    const dBL = d3.geoDistance([lon0, lat1], centerLonLat);
+                    
+                    if (dTL > limit || dTR > limit || dBR > limit || dBL > limit) {
+                        continue;
+                    }
+                }
+                
                 const pTL = state.projection([lon0, lat0]);
                 const pTR = state.projection([lon1, lat0]);
                 const pBR = state.projection([lon1, lat1]);
