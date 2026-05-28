@@ -1887,7 +1887,16 @@ function render() {
 
     // 1.5. Draw Satellite Imagery if active
     if (state.satelliteActive) {
-        drawSatelliteTiles();
+        if (state.projectionType === 'globe') {
+            ctx.save();
+            ctx.beginPath();
+            path({ type: 'Sphere' });
+            ctx.clip();
+            drawSatelliteTiles();
+            ctx.restore();
+        } else {
+            drawSatelliteTiles();
+        }
     }
 
     // 2. Draw Sphere Background (Globe mode only)
@@ -2586,29 +2595,52 @@ function getTileImage(x, y, z) {
 function isTileVisible(x, y, z) {
     const bounds = getTileBounds(x, y, z);
     
-    // In 3D Globe mode, check if the entire tile is on the back-face of the globe
+    let centerLon = (( -state.rotation[0] + 180) % 360 + 360) % 360 - 180;
+    let centerLat = state.projectionType === 'globe' ? -state.rotation[1] : 0;
+    
+    // Invert the screen center to get the exact geographic center in 2D mode
+    if (state.projectionType === 'flat' && state.projection.invert) {
+        try {
+            const centerPt = state.projection.invert([state.width / 2, state.height / 2]);
+            if (centerPt && !isNaN(centerPt[0]) && !isNaN(centerPt[1])) {
+                centerLon = centerPt[0];
+                centerLat = centerPt[1];
+            }
+        } catch (e) {}
+    }
+    
+    // If the projection center (center of screen/globe) lies inside the tile, it is definitely visible
+    if (centerLon >= bounds.lonMin && centerLon <= bounds.lonMax &&
+        centerLat >= bounds.latMin && centerLat <= bounds.latMax) {
+        return true;
+    }
+    
+    // In 3D Globe mode, check if any part of the tile is on the visible hemisphere
     if (state.projectionType === 'globe') {
-        const centerLon = (( -state.rotation[0] + 180) % 360 + 360) % 360 - 180;
-        const centerLat = -state.rotation[1];
         const centerLonLat = [centerLon, centerLat];
         
-        const lonMid = (bounds.lonMin + bounds.lonMax) / 2;
-        const latMid = (bounds.latMin + bounds.latMax) / 2;
+        // Find the closest point in the tile bounding box to the center of the globe on the sphere
+        let closestLon = centerLon;
+        if (bounds.lonMin <= bounds.lonMax) {
+            if (centerLon < bounds.lonMin || centerLon > bounds.lonMax) {
+                const diffMin = ((bounds.lonMin - centerLon + 180) % 360 + 360) % 360 - 180;
+                const diffMax = ((bounds.lonMax - centerLon + 180) % 360 + 360) % 360 - 180;
+                closestLon = Math.abs(diffMin) < Math.abs(diffMax) ? bounds.lonMin : bounds.lonMax;
+            }
+        }
         
-        const dTL = d3.geoDistance([bounds.lonMin, bounds.latMax], centerLonLat);
-        const dTR = d3.geoDistance([bounds.lonMax, bounds.latMax], centerLonLat);
-        const dBR = d3.geoDistance([bounds.lonMax, bounds.latMin], centerLonLat);
-        const dBL = d3.geoDistance([bounds.lonMin, bounds.latMin], centerLonLat);
-        const dMid = d3.geoDistance([lonMid, latMid], centerLonLat);
+        let closestLat = centerLat;
+        if (centerLat < bounds.latMin) closestLat = bounds.latMin;
+        else if (centerLat > bounds.latMax) closestLat = bounds.latMax;
         
-        const limit = Math.PI / 2;
-        // If all 4 corners and the center are strictly on the back hemisphere, skip it
-        if (dTL > limit && dTR > limit && dBR > limit && dBL > limit && dMid > limit) {
+        const dist = d3.geoDistance([closestLon, closestLat], centerLonLat);
+        // If the closest point is strictly on the back-face, the tile is completely invisible
+        if (dist > Math.PI / 2 + 0.02) {
             return false;
         }
     }
     
-    // Project the 4 corners to screen coordinates
+    // Project the 4 corners to check screen viewport bounds overlap
     const pTL = state.projection([bounds.lonMin, bounds.latMax]);
     const pTR = state.projection([bounds.lonMax, bounds.latMax]);
     const pBR = state.projection([bounds.lonMax, bounds.latMin]);
@@ -2616,14 +2648,10 @@ function isTileVisible(x, y, z) {
     
     const pts = [pTL, pTR, pBR, pBL].filter(p => p !== null && !isNaN(p[0]) && !isNaN(p[1]));
     if (pts.length === 0) {
-        // If all corners are clipped, check if the globe center lies inside this tile
+        // In 3D Globe, if the closest point is on the front-face but all corners are clipped,
+        // it means the tile covers the visible center or is large and wraps the horizon, so it is visible!
         if (state.projectionType === 'globe') {
-            const centerLon = (( -state.rotation[0] + 180) % 360 + 360) % 360 - 180;
-            const centerLat = -state.rotation[1];
-            if (centerLon >= bounds.lonMin && centerLon <= bounds.lonMax &&
-                centerLat >= bounds.latMin && centerLat <= bounds.latMax) {
-                return true;
-            }
+            return true;
         }
         return false;
     }
@@ -2697,16 +2725,15 @@ function drawSatelliteTiles() {
     // Determine the optimal tile zoom level Z based on canvas scale and zoom factor
     const scaleValue = state.projectionType === 'globe' ? state.scale.globe : state.scale.flat;
     const worldWidth = scaleValue * state.zoom * 2 * Math.PI;
-    const zDouble = Math.log2(worldWidth / 256);
-    // Clamp Z between 0 and 7
-    const z = Math.max(0, Math.min(7, Math.floor(zDouble)));
+    // Clamp Z between 0 and 12 for high-resolution detailed zoom views
+    const z = Math.max(0, Math.min(12, Math.floor(zDouble)));
     const n = Math.pow(2, z);
     
     // Use our high-performance recursive quadtree to find visible tiles at zoom Z
     const visibleTiles = getVisibleTilesAtZoom(z);
     
-    // Subdivide tile into N x N grid to wrap smoothly around Equal Earth curves
-    const N = 4; // 4x4 subdivision grid for exceptional precision and smooth horizon
+    // Subdivide tile into N x N grid to wrap smoothly around curves
+    const N = state.projectionType === 'globe' ? 6 : 4; // 6x6 on globe for smooth curved horizon, 4x4 on flat
     
     visibleTiles.forEach(tileCoords => {
         const x = tileCoords.x;
@@ -2740,6 +2767,14 @@ function drawSatelliteTiles() {
                 
                 // If any corner is clipped, skip drawing this sub-quad
                 if (!pTL || !pTR || !pBR || !pBL) continue;
+                
+                // Skip if the sub-quad crosses the projection's longitudinal split (stretches across the screen)
+                if (state.projectionType === 'flat' && (
+                    Math.abs(pTR[0] - pTL[0]) > state.width / 2 || 
+                    Math.abs(pBR[0] - pBL[0]) > state.width / 2
+                )) {
+                    continue;
+                }
                 
                 const u0 = i * 256 / N;
                 const u1 = (i + 1) * 256 / N;
