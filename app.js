@@ -2488,6 +2488,19 @@ function initLeafletMap() {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
     }).addTo(state.leafletMap);
 
+    // Sync initial DOM display visibility based on default projection type
+    if (state.projectionType === 'flat') {
+        document.getElementById('mapCanvas').style.display = 'none';
+        document.getElementById('leafletMap').style.display = 'block';
+        // Force Leaflet to recalculate its full viewport bounds
+        setTimeout(() => {
+            if (state.leafletMap) state.leafletMap.invalidateSize();
+        }, 150);
+    } else {
+        document.getElementById('mapCanvas').style.display = 'block';
+        document.getElementById('leafletMap').style.display = 'none';
+    }
+
     // Initial layer sync
     updateLeafletLayers();
 }
