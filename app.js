@@ -444,6 +444,10 @@ async function loadData() {
             loadingScreen.style.opacity = 0;
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
+                if (state.leafletMap) {
+                    state.leafletMap.invalidateSize();
+                    updateLeafletLayers();
+                }
                 // Trigger animation loop
                 startAnimationLoop();
             }, 500);
@@ -965,6 +969,9 @@ function buildRouteFeatures() {
         if (r.src) state.activeAirportsSet.add(r.src);
         if (r.dst) state.activeAirportsSet.add(r.dst);
     });
+
+    // Sync Leaflet map layers automatically when route features are rebuilt
+    updateLeafletLayers();
 }
 
 // Filters implementation
@@ -2549,17 +2556,21 @@ function updateLeafletLayers() {
     }
 
     if (!state.satelliteActive && state.countriesGeoJSON) {
-        state.leafletVectorLayer = L.geoJSON(state.countriesGeoJSON, {
-            style: function() {
-                return {
-                    fillColor: colors.landFill,
-                    fillOpacity: 1.0,
-                    color: colors.landStroke,
-                    weight: 0.7,
-                    opacity: 1.0
-                };
-            }
-        }).addTo(state.leafletMap);
+        try {
+            state.leafletVectorLayer = L.geoJSON(state.countriesGeoJSON, {
+                style: function() {
+                    return {
+                        fillColor: colors.landFill,
+                        fillOpacity: 1.0,
+                        color: colors.landStroke,
+                        weight: 0.7,
+                        opacity: 1.0
+                    };
+                }
+            }).addTo(state.leafletMap);
+        } catch (error) {
+            console.error("Failed to parse or add countriesGeoJSON to Leaflet map:", error);
+        }
         
         // Sync map background container with theme ocean color
         state.leafletMap.getContainer().style.background = colors.ocean;
@@ -2578,64 +2589,68 @@ function updateLeafletLayers() {
     const toAp = isP2P ? state.airports[state.locationToIndex] : null;
     const hasFilter = !!state.activeFilter.type;
 
-    state.leafletRoutesLayer = L.geoJSON(state.activeRouteFeatures, {
-        style: function(feature) {
-            const routeType = feature.properties.routeType;
-            let strokeColor = colors.routeInactive;
-            let dashArray = null;
-            let weight = 1.0;
-            let opacity = 0.6;
+    try {
+        state.leafletRoutesLayer = L.geoJSON(state.activeRouteFeatures, {
+            style: function(feature) {
+                const routeType = feature.properties.routeType;
+                let strokeColor = colors.routeInactive;
+                let dashArray = null;
+                let weight = 1.0;
+                let opacity = 0.6;
 
-            if (isP2P) {
-                const isDirectP2P = fromAp && toAp && (
-                    (feature.properties.srcIata === fromAp.iata && feature.properties.dstIata === toAp.iata) ||
-                    (feature.properties.srcIata === toAp.iata && feature.properties.dstIata === fromAp.iata)
-                );
-                if (isDirectP2P) {
-                     strokeColor = colors.routeDirect;
-                     weight = 2.5;
-                     opacity = 0.9;
-                } else if (routeType === 'direct') {
-                     strokeColor = colors.routeDirect;
-                     dashArray = "3, 3";
-                     weight = 1.5;
-                } else if (routeType === 'connecting') {
-                     strokeColor = colors.routeConnectingStroke;
-                     dashArray = "4, 4";
-                     weight = 1.5;
-                } else if (routeType === 'connecting-2') {
-                     strokeColor = colors.routeConnecting2Stroke;
-                     dashArray = "4, 4";
-                     weight = 1.5;
-                }
-            } else {
-                if (routeType === 'direct') {
-                    strokeColor = colors.routeDirect;
-                    weight = 1.6;
-                    opacity = 0.8;
-                } else if (routeType === 'connecting') {
-                    strokeColor = colors.routeConnectingStroke;
-                    dashArray = "4, 4";
-                    weight = 1.2;
-                } else if (routeType === 'connecting-2') {
-                    strokeColor = colors.routeConnecting2Stroke;
-                    dashArray = "4, 4";
-                    weight = 1.2;
+                if (isP2P) {
+                    const isDirectP2P = fromAp && toAp && (
+                        (feature.properties.srcIata === fromAp.iata && feature.properties.dstIata === toAp.iata) ||
+                        (feature.properties.srcIata === toAp.iata && feature.properties.dstIata === fromAp.iata)
+                    );
+                    if (isDirectP2P) {
+                         strokeColor = colors.routeDirect;
+                         weight = 2.5;
+                         opacity = 0.9;
+                    } else if (routeType === 'direct') {
+                         strokeColor = colors.routeDirect;
+                         dashArray = "3, 3";
+                         weight = 1.5;
+                    } else if (routeType === 'connecting') {
+                         strokeColor = colors.routeConnectingStroke;
+                         dashArray = "4, 4";
+                         weight = 1.5;
+                    } else if (routeType === 'connecting-2') {
+                         strokeColor = colors.routeConnecting2Stroke;
+                         dashArray = "4, 4";
+                         weight = 1.5;
+                    }
                 } else {
-                    strokeColor = colors.routeInactive;
-                    weight = 0.8;
-                    opacity = 0.25;
+                    if (routeType === 'direct') {
+                        strokeColor = colors.routeDirect;
+                        weight = 1.6;
+                        opacity = 0.8;
+                    } else if (routeType === 'connecting') {
+                        strokeColor = colors.routeConnectingStroke;
+                        dashArray = "4, 4";
+                        weight = 1.2;
+                    } else if (routeType === 'connecting-2') {
+                        strokeColor = colors.routeConnecting2Stroke;
+                        dashArray = "4, 4";
+                        weight = 1.2;
+                    } else {
+                        strokeColor = colors.routeInactive;
+                        weight = 0.8;
+                        opacity = 0.25;
+                    }
                 }
-            }
 
-            return {
-                color: strokeColor,
-                weight: weight,
-                opacity: opacity,
-                dashArray: dashArray
-            };
-        }
-    }).addTo(state.leafletMap);
+                return {
+                    color: strokeColor,
+                    weight: weight,
+                    opacity: opacity,
+                    dashArray: dashArray
+                };
+            }
+        }).addTo(state.leafletMap);
+    } catch (error) {
+        console.error("Failed to parse or add activeRouteFeatures to Leaflet map:", error);
+    }
 
     // 2. Rebuild / Sync Interactive Airport circle markers layer
     if (state.leafletAirportsLayer) {
