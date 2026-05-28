@@ -1873,10 +1873,6 @@ function initParticles() {
         });
     });
 
-    if (state.leafletMap) {
-        initLeafletParticles();
-    }
-
     markDirty();
 }
 
@@ -2404,23 +2400,15 @@ function startAnimationLoop() {
 
         // Particles always need a repaint when present (they move every frame)
         if (hasAnimatedParticles()) {
-            if (state.projectionType === 'flat') {
-                // Leaflet particle animation progress updates
-                state.particles.forEach(p => {
-                    p.progress += p.speed;
-                    if (p.progress >= 1.0) p.progress = 0;
-                    if (p.leafletMarker) {
-                        const currentCoords = p.interpolator(p.progress);
-                        p.leafletMarker.setLatLng([currentCoords[1], currentCoords[0]]);
-                    }
-                });
-            } else {
-                state.needsRender = true;
-            }
+            state.particles.forEach(p => {
+                p.progress += p.speed;
+                if (p.progress >= 1.0) p.progress = 0;
+            });
+            state.needsRender = true;
         }
 
         // Only repaint if dirty (avoids wasted GPU compositing on idle frames)
-        if (state.needsRender && state.projectionType !== 'flat') {
+        if (state.needsRender) {
             render();
             state.needsRender = false;
         }
