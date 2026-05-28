@@ -77,6 +77,12 @@ const state = {
     // PERF: animateRotation in flight flag
     rotationAnimating: false,
     cameraAnimFrameId: null,
+
+    // Leaflet Integration State
+    leafletMap: null,
+    leafletRoutesLayer: null,
+    leafletAirportsLayer: null,
+    leafletParticlesLayer: null,
 };
 
 // Canvas colour palettes — swapped on theme toggle
@@ -220,6 +226,7 @@ function initCanvas() {
     resizeCanvas();
     setupProjections();
     setupInteractions();
+    initLeafletMap();
 
     // PERF: cache graticule geometry once — it never changes
     state.graticuleGeometry = d3.geoGraticule()();
@@ -528,6 +535,18 @@ function initUI() {
         btnGlobe.classList.add('active');
         btnFlat.classList.remove('active');
         projInfo.innerText = "Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.";
+        
+        // Show Canvas, Hide Leaflet
+        document.getElementById('mapCanvas').style.display = 'block';
+        document.getElementById('leafletMap').style.display = 'none';
+
+        // Synchronize Leaflet view to D3 rotation
+        if (state.leafletMap) {
+            const center = state.leafletMap.getCenter();
+            state.rotation = [-center.lng, -center.lat, 0];
+            state.zoom = Math.max(0.6, state.leafletMap.getZoom() - 1);
+        }
+
         setupProjections();
         markDirty();
     });
@@ -537,29 +556,57 @@ function initUI() {
         state.projectionType = 'flat';
         btnFlat.classList.add('active');
         btnGlobe.classList.remove('active');
-        projInfo.innerText = "Equal Earth projection: A true-to-earth flat projection showing highly accurate sizes of all landmasses. Drag to pan, scroll to zoom.";
-        setupProjections();
-        markDirty();
+        projInfo.innerText = "Satellite Map: A high-resolution tiled satellite projection. Zoom in down to runway and street level. Drag to pan, scroll to zoom.";
+        
+        // Hide Canvas, Show Leaflet
+        document.getElementById('mapCanvas').style.display = 'none';
+        document.getElementById('leafletMap').style.display = 'block';
+
+        // Synchronize D3 rotation to Leaflet center
+        const lat = -state.rotation[1];
+        const lon = -state.rotation[0];
+        const leafletZoom = Math.max(1, Math.min(19, Math.round(state.zoom + 1)));
+
+        if (state.leafletMap) {
+            state.leafletMap.setView([lat, lon], leafletZoom);
+            // Refresh layers to reflect current active filter
+            updateLeafletLayers();
+            state.leafletMap.invalidateSize();
+        }
     });
 
     // 4. Floating HUD Control buttons
     document.getElementById('ctrl-zoom-in').addEventListener('click', () => {
         clearActiveRegionButtons();
-        state.zoom = Math.min(250, state.zoom + 0.15 * state.zoom);
-        setupProjections();
-        markDirty();
+        if (state.projectionType === 'flat' && state.leafletMap) {
+            state.leafletMap.zoomIn();
+        } else {
+            state.zoom = Math.min(250, state.zoom + 0.15 * state.zoom);
+            setupProjections();
+            markDirty();
+        }
     });
 
     document.getElementById('ctrl-zoom-out').addEventListener('click', () => {
         clearActiveRegionButtons();
-        state.zoom = Math.max(0.6, state.zoom - 0.15 * state.zoom);
-        setupProjections();
-        markDirty();
+        if (state.projectionType === 'flat' && state.leafletMap) {
+            state.leafletMap.zoomOut();
+        } else {
+            state.zoom = Math.max(0.6, state.zoom - 0.15 * state.zoom);
+            setupProjections();
+            markDirty();
+        }
     });
 
     document.getElementById('ctrl-reset').addEventListener('click', () => {
-        animateCameraTo([0, -20, 0], 1.0, [0, 0]);
-        updateActiveRegionButton('atlantic');
+        if (state.projectionType === 'flat' && state.leafletMap) {
+            state.leafletMap.setView([20, 0], 2);
+            updateActiveRegionButton('atlantic');
+            updateLeafletLayers();
+        } else {
+            animateCameraTo([0, -20, 0], 1.0, [0, 0]);
+            updateActiveRegionButton('atlantic');
+        }
     });
 
     const btnAutoRotate = document.getElementById('ctrl-auto-rotate');
@@ -865,14 +912,30 @@ function hideSuggestions() {
 // PERF: Pre-build GeoJSON features for active routes once on filter change,
 // instead of creating a new object per route per frame in the render loop.
 function buildRouteFeatures() {
-    state.activeRouteFeatures = state.activeRoutes.map(r => ({
-        type: "Feature",
-        geometry: {
-            type: "LineString",
-            coordinates: [[r.src.lon, r.src.lat], [r.dst.lon, r.dst.lat]]
-        },
-        properties: { routeType: r.type, filterType: state.activeFilter.type }
-    }));
+    state.activeRouteFeatures = state.activeRoutes.map(r => {
+        // Pre-interpolate geodesic path along great-circle coordinates
+        // This ensures routes appear as beautiful curved paths in both D3 and Leaflet
+        const interpolator = d3.geoInterpolate([r.src.lon, r.src.lat], [r.dst.lon, r.dst.lat]);
+        const coords = [];
+        const segments = 15;
+        for (let i = 0; i <= segments; i++) {
+            coords.push(interpolator(i / segments));
+        }
+        return {
+            type: "Feature",
+            geometry: {
+                type: "LineString",
+                coordinates: coords
+            },
+            properties: { 
+                routeType: r.type, 
+                filterType: state.activeFilter.type,
+                srcIata: r.src.iata,
+                dstIata: r.dst.iata,
+                airline: r.airline
+            }
+        };
+    });
 
     // Cache the set of active airports (connected to flight paths)
     state.activeAirportsSet = new Set();
@@ -1782,6 +1845,10 @@ function initParticles() {
         });
     });
 
+    if (state.leafletMap) {
+        initLeafletParticles();
+    }
+
     markDirty();
 }
 
@@ -2299,11 +2366,23 @@ function startAnimationLoop() {
 
         // Particles always need a repaint when present (they move every frame)
         if (hasAnimatedParticles()) {
-            state.needsRender = true;
+            if (state.projectionType === 'flat') {
+                // Leaflet particle animation progress updates
+                state.particles.forEach(p => {
+                    p.progress += p.speed;
+                    if (p.progress >= 1.0) p.progress = 0;
+                    if (p.leafletMarker) {
+                        const currentCoords = p.interpolator(p.progress);
+                        p.leafletMarker.setLatLng([currentCoords[1], currentCoords[0]]);
+                    }
+                });
+            } else {
+                state.needsRender = true;
+            }
         }
 
         // Only repaint if dirty (avoids wasted GPU compositing on idle frames)
-        if (state.needsRender) {
+        if (state.needsRender && state.projectionType !== 'flat') {
             render();
             state.needsRender = false;
         }
@@ -2393,4 +2472,193 @@ function animateCameraTo(targetRotation, targetZoom = 1.0, targetTranslation = [
     }
 
     state.cameraAnimFrameId = requestAnimationFrame(step);
+}
+
+// ── Leaflet Satellite Basemap Integration (Option 2) ──────────
+function initLeafletMap() {
+    state.leafletMap = L.map('leafletMap', {
+        zoomControl: false,
+        attributionControl: false,
+        worldCopyJump: true
+    }).setView([20, 0], 2);
+
+    // Load Esri World Imagery (high-resolution satellite basemap)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    }).addTo(state.leafletMap);
+
+    // Initial layer sync
+    updateLeafletLayers();
+}
+
+function updateLeafletLayers() {
+    if (!state.leafletMap) return;
+
+    // 1. Rebuild / Sync Curved geodesic paths layer
+    if (state.leafletRoutesLayer) {
+        state.leafletMap.removeLayer(state.leafletRoutesLayer);
+    }
+
+    const colors = getThemeColors();
+    const isP2P = state.selectedAirportIndex !== null && state.locationToIndex !== null;
+    const fromAp = isP2P ? state.airports[state.selectedAirportIndex] : null;
+    const toAp = isP2P ? state.airports[state.locationToIndex] : null;
+    const hasFilter = !!state.activeFilter.type;
+
+    state.leafletRoutesLayer = L.geoJSON(state.activeRouteFeatures, {
+        style: function(feature) {
+            const routeType = feature.properties.routeType;
+            let strokeColor = colors.routeInactive;
+            let dashArray = null;
+            let weight = 1.0;
+            let opacity = 0.6;
+
+            if (isP2P) {
+                const isDirectP2P = fromAp && toAp && (
+                    (feature.properties.srcIata === fromAp.iata && feature.properties.dstIata === toAp.iata) ||
+                    (feature.properties.srcIata === toAp.iata && feature.properties.dstIata === fromAp.iata)
+                );
+                if (isDirectP2P) {
+                     strokeColor = colors.routeDirect;
+                     weight = 2.5;
+                     opacity = 0.9;
+                } else if (routeType === 'direct') {
+                     strokeColor = colors.routeDirect;
+                     dashArray = "3, 3";
+                     weight = 1.5;
+                } else if (routeType === 'connecting') {
+                     strokeColor = colors.routeConnectingStroke;
+                     dashArray = "4, 4";
+                     weight = 1.5;
+                } else if (routeType === 'connecting-2') {
+                     strokeColor = colors.routeConnecting2Stroke;
+                     dashArray = "4, 4";
+                     weight = 1.5;
+                }
+            } else {
+                if (routeType === 'direct') {
+                    strokeColor = colors.routeDirect;
+                    weight = 1.6;
+                    opacity = 0.8;
+                } else if (routeType === 'connecting') {
+                    strokeColor = colors.routeConnectingStroke;
+                    dashArray = "4, 4";
+                    weight = 1.2;
+                } else if (routeType === 'connecting-2') {
+                    strokeColor = colors.routeConnecting2Stroke;
+                    dashArray = "4, 4";
+                    weight = 1.2;
+                } else {
+                    strokeColor = colors.routeInactive;
+                    weight = 0.8;
+                    opacity = 0.25;
+                }
+            }
+
+            return {
+                color: strokeColor,
+                weight: weight,
+                opacity: opacity,
+                dashArray: dashArray
+            };
+        }
+    }).addTo(state.leafletMap);
+
+    // 2. Rebuild / Sync Interactive Airport circle markers layer
+    if (state.leafletAirportsLayer) {
+        state.leafletMap.removeLayer(state.leafletAirportsLayer);
+    }
+
+    const airportMarkers = [];
+    state.airports.forEach((ap, idx) => {
+        if (state.activeAirportsSet && !state.activeAirportsSet.has(ap)) return;
+        
+        const isSelectedFrom = state.selectedAirportIndex === idx;
+        const isSelectedTo = state.locationToIndex === idx;
+        
+        let radius = hasFilter ? 3.5 : 2.5;
+        let color = colors.airportBase;
+        let fillOpacity = 0.85;
+
+        if (isSelectedFrom || isSelectedTo) {
+            radius = 6;
+            color = colors.routeLocation;
+            fillOpacity = 1.0;
+        }
+
+        const marker = L.circleMarker([ap.lat, ap.lon], {
+            radius: radius,
+            fillColor: color,
+            color: isSelectedFrom || isSelectedTo ? '#ffffff' : color,
+            weight: isSelectedFrom || isSelectedTo ? 1.8 : 0.5,
+            fillOpacity: fillOpacity
+        });
+
+        // Glassmorphic interactive tooltip mapping
+        marker.bindTooltip(`
+            <div style="font-family: sans-serif; font-size: 11px; line-height: 1.4;">
+                <strong style="color: var(--color-cyan); font-size: 12px; display: block; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 2px; margin-bottom: 2px;">
+                    ${ap.city} (${ap.iata})
+                </strong>
+                <span style="color: #ffffff; display: block; font-weight: 500;">${ap.name}</span>
+                <span style="color: var(--color-text-secondary); font-size: 10px; display: block;">Country: ${ap.country}</span>
+                <span style="color: var(--color-cyan); font-size: 10px; display: block; font-weight: 600;">${ap.flightsCount} global flights</span>
+            </div>
+        `, { sticky: true, className: 'leaflet-tooltip-glass' });
+
+        marker.on('click', () => {
+            handleAirportClick(idx);
+        });
+
+        airportMarkers.push(marker);
+    });
+
+    state.leafletAirportsLayer = L.layerGroup(airportMarkers).addTo(state.leafletMap);
+
+    // 3. Rebuild / Sync Particles layer
+    initLeafletParticles();
+}
+
+function initLeafletParticles() {
+    if (!state.leafletMap) return;
+
+    if (state.leafletParticlesLayer) {
+        state.leafletMap.removeLayer(state.leafletParticlesLayer);
+    }
+
+    const markers = [];
+    state.particles.forEach(p => {
+        const currentCoords = p.interpolator(p.progress);
+        const marker = L.circleMarker([currentCoords[1], currentCoords[0]], {
+            radius: 3,
+            fillColor: p.color,
+            color: p.color,
+            weight: 0,
+            fillOpacity: 0.95
+        });
+        p.leafletMarker = marker;
+        markers.push(marker);
+    });
+
+    state.leafletParticlesLayer = L.layerGroup(markers).addTo(state.leafletMap);
+}
+
+function handleAirportClick(apIdx) {
+    if (state.activeTab === 'airline') {
+        activateLocationTab();
+        setLocationFilter(apIdx);
+    } else {
+        if (state.selectedAirportIndex === null) {
+            setLocationFilter(apIdx);
+        } else if (state.selectedAirportIndex === apIdx) {
+            clearLocationFrom();
+        } else if (state.locationToIndex === apIdx) {
+            clearLocationTo();
+        } else {
+            setLocationToFilter(apIdx);
+        }
+    }
+    // Update Leaflet markers to highlight active selections instantly
+    updateLeafletLayers();
 }
