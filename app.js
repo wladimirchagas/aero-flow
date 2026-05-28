@@ -2583,6 +2583,84 @@ function getTileImage(x, y, z) {
     return tileState;
 }
 
+function isTileVisible(x, y, z) {
+    const bounds = getTileBounds(x, y, z);
+    
+    // In 3D Globe mode, check if the entire tile is on the back-face of the globe
+    if (state.projectionType === 'globe') {
+        const centerLon = (( -state.rotation[0] + 180) % 360 + 360) % 360 - 180;
+        const centerLat = -state.rotation[1];
+        const centerLonLat = [centerLon, centerLat];
+        
+        const lonMid = (bounds.lonMin + bounds.lonMax) / 2;
+        const latMid = (bounds.latMin + bounds.latMax) / 2;
+        
+        const dTL = d3.geoDistance([bounds.lonMin, bounds.latMax], centerLonLat);
+        const dTR = d3.geoDistance([bounds.lonMax, bounds.latMax], centerLonLat);
+        const dBR = d3.geoDistance([bounds.lonMax, bounds.latMin], centerLonLat);
+        const dBL = d3.geoDistance([bounds.lonMin, bounds.latMin], centerLonLat);
+        const dMid = d3.geoDistance([lonMid, latMid], centerLonLat);
+        
+        const limit = Math.PI / 2;
+        // If all 4 corners and the center are strictly on the back hemisphere, skip it
+        if (dTL > limit && dTR > limit && dBR > limit && dBL > limit && dMid > limit) {
+            return false;
+        }
+    }
+    
+    // Project the 4 corners to screen coordinates
+    const pTL = state.projection([bounds.lonMin, bounds.latMax]);
+    const pTR = state.projection([bounds.lonMax, bounds.latMax]);
+    const pBR = state.projection([bounds.lonMax, bounds.latMin]);
+    const pBL = state.projection([bounds.lonMin, bounds.latMin]);
+    
+    const pts = [pTL, pTR, pBR, pBL].filter(p => p !== null && !isNaN(p[0]) && !isNaN(p[1]));
+    if (pts.length === 0) {
+        // If all corners are clipped, check if the globe center lies inside this tile
+        if (state.projectionType === 'globe') {
+            const centerLon = (( -state.rotation[0] + 180) % 360 + 360) % 360 - 180;
+            const centerLat = -state.rotation[1];
+            if (centerLon >= bounds.lonMin && centerLon <= bounds.lonMax &&
+                centerLat >= bounds.latMin && centerLat <= bounds.latMax) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    const xs = pts.map(p => p[0]);
+    const ys = pts.map(p => p[1]);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    
+    // Check if the projected bounding box overlaps the screen viewport bounds
+    return (xMax >= 0 && xMin <= state.width && yMax >= 0 && yMin <= state.height);
+}
+
+function getVisibleTilesAtZoom(targetZ) {
+    const visible = [];
+    
+    function search(x, y, z) {
+        if (!isTileVisible(x, y, z)) return;
+        
+        if (z === targetZ) {
+            visible.push({ x, y });
+            return;
+        }
+        
+        const nextZ = z + 1;
+        search(2 * x, 2 * y, nextZ);
+        search(2 * x + 1, 2 * y, nextZ);
+        search(2 * x, 2 * y + 1, nextZ);
+        search(2 * x + 1, 2 * y + 1, nextZ);
+    }
+    
+    search(0, 0, 0);
+    return visible;
+}
+
 function drawTexturedTriangle(ctx, img, x0, y0, x1, y1, x2, y2, u0, v0, u1, v1, u2, v2) {
     ctx.save();
     
@@ -2620,107 +2698,65 @@ function drawSatelliteTiles() {
     const scaleValue = state.projectionType === 'globe' ? state.scale.globe : state.scale.flat;
     const worldWidth = scaleValue * state.zoom * 2 * Math.PI;
     const zDouble = Math.log2(worldWidth / 256);
-    // Clamp Z between 0 and 7 (Z=7 provides excellent resolution for 50x zooms)
+    // Clamp Z between 0 and 7
     const z = Math.max(0, Math.min(7, Math.floor(zDouble)));
     const n = Math.pow(2, z);
     
-    // Find visible tile bounds
-    let lonMin = 180, lonMax = -180;
-    let latMin = 85.0511, latMax = -85.0511;
-    let hasValidPoint = false;
+    // Use our high-performance recursive quadtree to find visible tiles at zoom Z
+    const visibleTiles = getVisibleTilesAtZoom(z);
     
-    // Scan a grid of points on the screen to invert and check visible coordinates
-    const stepX = state.width / 4;
-    const stepY = state.height / 4;
-    for (let px = 0; px <= state.width; px += stepX) {
-        for (let py = 0; py <= state.height; py += stepY) {
-            const inv = state.projection.invert([px, py]);
-            if (inv && !isNaN(inv[0]) && !isNaN(inv[1])) {
-                let lon = inv[0];
-                let lat = inv[1];
+    // Subdivide tile into N x N grid to wrap smoothly around Equal Earth curves
+    const N = 4; // 4x4 subdivision grid for exceptional precision and smooth horizon
+    
+    visibleTiles.forEach(tileCoords => {
+        const x = tileCoords.x;
+        const y = tileCoords.y;
+        const bounds = getTileBounds(x, y, z);
+        const tile = getTileImage(x, y, z);
+        if (!tile.loaded || tile.failed) return;
+        
+        // Calculate Mercator Y limits of the tile
+        const yMaxMerc = Math.PI * (1 - 2 * y / n);
+        const yMinMerc = Math.PI * (1 - 2 * (y + 1) / n);
+        
+        for (let i = 0; i < N; i++) {
+            for (let j = 0; j < N; j++) {
+                // Linearly interpolate longitude (since Mercator is linear in longitude)
+                const lon0 = bounds.lonMin + i * (bounds.lonMax - bounds.lonMin) / N;
+                const lon1 = bounds.lonMin + (i + 1) * (bounds.lonMax - bounds.lonMin) / N;
                 
-                // Keep longitude within standard [-180, 180] boundary
-                lon = ((lon + 180) % 360 + 360) % 360 - 180;
+                // Linearly interpolate Mercator Y coordinates to align perfectly with satellite tiles!
+                const yMerc0 = yMaxMerc - j * (yMaxMerc - yMinMerc) / N;
+                const yMerc1 = yMaxMerc - (j + 1) * (yMaxMerc - yMinMerc) / N;
                 
-                lonMin = Math.min(lonMin, lon);
-                lonMax = Math.max(lonMax, lon);
-                latMin = Math.min(latMin, lat);
-                latMax = Math.max(latMax, lat);
-                hasValidPoint = true;
+                // Convert Mercator Y to true latitudes
+                const lat0 = Math.atan(Math.sinh(yMerc0)) * 180 / Math.PI;
+                const lat1 = Math.atan(Math.sinh(yMerc1)) * 180 / Math.PI;
+                
+                const pTL = state.projection([lon0, lat0]);
+                const pTR = state.projection([lon1, lat0]);
+                const pBR = state.projection([lon1, lat1]);
+                const pBL = state.projection([lon0, lat1]);
+                
+                // If any corner is clipped, skip drawing this sub-quad
+                if (!pTL || !pTR || !pBR || !pBL) continue;
+                
+                const u0 = i * 256 / N;
+                const u1 = (i + 1) * 256 / N;
+                const v0 = j * 256 / N;
+                const v1 = (j + 1) * 256 / N;
+                
+                // Triangle 1: TL, TR, BL
+                drawTexturedTriangle(ctx, tile.image, 
+                    pTL[0], pTL[1], pTR[0], pTR[1], pBL[0], pBL[1],
+                    u0, v0, u1, v0, u0, v1
+                );
+                // Triangle 2: TR, BR, BL
+                drawTexturedTriangle(ctx, tile.image, 
+                    pTR[0], pTR[1], pBR[0], pBR[1], pBL[0], pBL[1],
+                    u1, v0, u1, v1, u0, v1
+                );
             }
         }
-    }
-    
-    let xStart = 0, xEnd = n - 1;
-    let yStart = 0, yEnd = n - 1;
-    
-    if (hasValidPoint && (lonMax - lonMin < 340)) {
-        latMin = Math.max(-85.0511, Math.min(85.0511, latMin));
-        latMax = Math.max(-85.0511, Math.min(85.0511, latMax));
-        
-        xStart = Math.max(0, Math.min(n - 1, Math.floor((lonMin + 180) / 360 * n)));
-        xEnd = Math.max(0, Math.min(n - 1, Math.floor((lonMax + 180) / 360 * n)));
-        
-        yStart = latToTileY(latMax, z);
-        yEnd = latToTileY(latMin, z);
-        
-        if (xStart > xEnd) {
-            // Wrapped around date line
-            xStart = 0;
-            xEnd = n - 1;
-        }
-    }
-    
-    // Draw the visible tiles with smooth subdivisions to match Equal Earth curves
-    const N = 2; // Subdivide tile into 2x2 grid (8 triangles)
-    for (let x = xStart; x <= xEnd; x++) {
-        for (let y = yStart; y <= yEnd; y++) {
-            const bounds = getTileBounds(x, y, z);
-            const tile = getTileImage(x, y, z);
-            if (!tile.loaded || tile.failed) continue;
-            
-            for (let i = 0; i < N; i++) {
-                for (let j = 0; j < N; j++) {
-                    const lon0 = bounds.lonMin + i * (bounds.lonMax - bounds.lonMin) / N;
-                    const lon1 = bounds.lonMin + (i + 1) * (bounds.lonMax - bounds.lonMin) / N;
-                    const lat0 = bounds.latMax - j * (bounds.latMax - bounds.latMin) / N;
-                    const lat1 = bounds.latMax - (j + 1) * (bounds.latMax - bounds.latMin) / N;
-                    
-                    const pTL = state.projection([lon0, lat0]);
-                    const pTR = state.projection([lon1, lat0]);
-                    const pBR = state.projection([lon1, lat1]);
-                    const pBL = state.projection([lon0, lat1]);
-                    
-                    if (!pTL || !pTR || !pBR || !pBL) continue;
-                    
-                    // In 3D Globe mode, discard points that are on the back-face of the orthographic projection
-                    if (state.projectionType === 'globe') {
-                        const cTL = d3.geoDistance([lon0, lat0], [-state.rotation[0], -state.rotation[1]]);
-                        const cTR = d3.geoDistance([lon1, lat0], [-state.rotation[0], -state.rotation[1]]);
-                        const cBR = d3.geoDistance([lon1, lat1], [-state.rotation[0], -state.rotation[1]]);
-                        const cBL = d3.geoDistance([lon0, lat1], [-state.rotation[0], -state.rotation[1]]);
-                        // Orthographic clipping limit is PI/2 (90 degrees)
-                        const limit = Math.PI / 2;
-                        if (cTL > limit || cTR > limit || cBR > limit || cBL > limit) continue;
-                    }
-                    
-                    const u0 = i * 256 / N;
-                    const u1 = (i + 1) * 256 / N;
-                    const v0 = j * 256 / N;
-                    const v1 = (j + 1) * 256 / N;
-                    
-                    // Triangle 1: TL, TR, BL
-                    drawTexturedTriangle(ctx, tile.image, 
-                        pTL[0], pTL[1], pTR[0], pTR[1], pBL[0], pBL[1],
-                        u0, v0, u1, v0, u0, v1
-                    );
-                    // Triangle 2: TR, BR, BL
-                    drawTexturedTriangle(ctx, tile.image, 
-                        pTR[0], pTR[1], pBR[0], pBR[1], pBL[0], pBL[1],
-                        u1, v0, u1, v1, u0, v1
-                    );
-                }
-            }
-        }
-    }
+    });
 }
