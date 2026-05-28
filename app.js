@@ -2605,6 +2605,25 @@ function isTileVisible(x, y, z) {
             if (centerPt && !isNaN(centerPt[0]) && !isNaN(centerPt[1])) {
                 centerLon = centerPt[0];
                 centerLat = centerPt[1];
+            } else {
+                // Fallback closed-form mathematical inverse Equal Earth calculation 
+                // to completely bypass D3's float precision / asin rounding errors under extreme zooms
+                const scale = state.scale.flat * state.zoom;
+                const translate = [
+                    state.width / 2 + (state.width <= 768 ? 0 : 100 * state.sidebarOffsetTransition) + state.translation[0],
+                    state.height / 2 + state.translation[1]
+                ];
+                
+                const dy = translate[1] - state.height / 2;
+                const theta = Math.max(-1.04, Math.min(1.04, dy / (scale * 1.340264)));
+                centerLat = Math.asin(Math.sin(theta) / 0.866) * (180 / Math.PI);
+                if (isNaN(centerLat)) centerLat = 0;
+                
+                const dx = state.width / 2 - translate[0];
+                const cosTheta = Math.cos(theta);
+                const deltaLon = (dx / (scale * 1.1547 * (cosTheta > 0.1 ? cosTheta : 1))) * (180 / Math.PI);
+                centerLon = -state.rotation[0] + deltaLon;
+                centerLon = ((centerLon + 180) % 360 + 360) % 360 - 180;
             }
         } catch (e) {}
     }
