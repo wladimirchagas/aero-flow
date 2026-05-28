@@ -352,7 +352,7 @@ function setupInteractions() {
         const zoomSensitivity = 0.08;
 
         if (e.deltaY < 0) {
-            state.zoom = Math.min(5, state.zoom + zoomSensitivity * state.zoom);
+            state.zoom = Math.min(250, state.zoom + zoomSensitivity * state.zoom);
         } else {
             state.zoom = Math.max(0.6, state.zoom - zoomSensitivity * state.zoom);
         }
@@ -545,14 +545,14 @@ function initUI() {
     // 4. Floating HUD Control buttons
     document.getElementById('ctrl-zoom-in').addEventListener('click', () => {
         clearActiveRegionButtons();
-        state.zoom = Math.min(5, state.zoom + 0.2);
+        state.zoom = Math.min(250, state.zoom + 0.15 * state.zoom);
         setupProjections();
         markDirty();
     });
 
     document.getElementById('ctrl-zoom-out').addEventListener('click', () => {
         clearActiveRegionButtons();
-        state.zoom = Math.max(0.6, state.zoom - 0.2);
+        state.zoom = Math.max(0.6, state.zoom - 0.15 * state.zoom);
         setupProjections();
         markDirty();
     });
