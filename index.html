@@ -175,12 +175,22 @@
                         </button>
                         <button class="proj-btn active" id="btn-flat" data-proj="flat">
                             <i data-lucide="map"></i>
-                            <span>Satellite 2D Map</span>
+                            <span>2D Flat Map</span>
                         </button>
                     </div>
+
+                    <!-- Satellite View Toggle (visible only in 2D mode) -->
+                    <div class="satellite-toggle-box" id="sat-toggle-box">
+                        <label class="switch-label">
+                            <input type="checkbox" id="chk-satellite">
+                            <span class="slider"></span>
+                            <span class="switch-text">Satellite Imagery</span>
+                        </label>
+                    </div>
+
                     <p class="proj-info">
                         <i data-lucide="info" class="inline-icon"></i> 
-                        <span id="projection-info-text">Satellite Map: A high-resolution tiled satellite projection. Zoom in down to runway and street level. Drag to pan, scroll to zoom.</span>
+                        <span id="projection-info-text">2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.</span>
                     </p>
                 </section>
 

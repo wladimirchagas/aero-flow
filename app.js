@@ -83,6 +83,9 @@ const state = {
     leafletRoutesLayer: null,
     leafletAirportsLayer: null,
     leafletParticlesLayer: null,
+    leafletSatelliteLayer: null,
+    leafletVectorLayer: null,
+    satelliteActive: false,
 };
 
 // Canvas colour palettes — swapped on theme toggle
@@ -216,6 +219,10 @@ function applyTheme(theme, save) {
     markDirty();
     // Also re-spawn particles so they pick up new colours
     if (state.activeRoutes.length) initParticles();
+    // Update Leaflet vector basemap styles (land, oceans, borders) with new theme colors
+    if (state.leafletMap) {
+        updateLeafletLayers();
+    }
 }
 
 // Canvas Setup
@@ -540,6 +547,9 @@ function initUI() {
         document.getElementById('mapCanvas').style.display = 'block';
         document.getElementById('leafletMap').style.display = 'none';
 
+        // Hide satellite checkbox panel in 3D mode
+        document.getElementById('sat-toggle-box').style.display = 'none';
+
         // Synchronize Leaflet view to D3 rotation
         if (state.leafletMap) {
             const center = state.leafletMap.getCenter();
@@ -556,11 +566,14 @@ function initUI() {
         state.projectionType = 'flat';
         btnFlat.classList.add('active');
         btnGlobe.classList.remove('active');
-        projInfo.innerText = "Satellite Map: A high-resolution tiled satellite projection. Zoom in down to runway and street level. Drag to pan, scroll to zoom.";
+        projInfo.innerText = "2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.";
         
         // Hide Canvas, Show Leaflet
         document.getElementById('mapCanvas').style.display = 'none';
         document.getElementById('leafletMap').style.display = 'block';
+
+        // Show satellite checkbox panel in 2D mode
+        document.getElementById('sat-toggle-box').style.display = 'flex';
 
         // Synchronize D3 rotation to Leaflet center
         const lat = -state.rotation[1];
@@ -574,6 +587,15 @@ function initUI() {
             state.leafletMap.invalidateSize();
         }
     });
+
+    // Wire up Satellite Imagery checkbox change listener
+    const chkSatellite = document.getElementById('chk-satellite');
+    if (chkSatellite) {
+        chkSatellite.addEventListener('change', (e) => {
+            state.satelliteActive = e.target.checked;
+            updateLeafletLayers();
+        });
+    }
 
     // 4. Floating HUD Control buttons
     document.getElementById('ctrl-zoom-in').addEventListener('click', () => {
@@ -2482,11 +2504,11 @@ function initLeafletMap() {
         worldCopyJump: true
     }).setView([20, 0], 2);
 
-    // Load Esri World Imagery (high-resolution satellite basemap)
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    // Create Esri World Imagery layer once, but do NOT add to map yet (vector is default!)
+    state.leafletSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    }).addTo(state.leafletMap);
+    });
 
     // Sync initial DOM display visibility based on default projection type
     if (state.projectionType === 'flat') {
@@ -2508,12 +2530,49 @@ function initLeafletMap() {
 function updateLeafletLayers() {
     if (!state.leafletMap) return;
 
-    // 1. Rebuild / Sync Curved geodesic paths layer
+    const colors = getThemeColors();
+
+    // 1. Rebuild / Sync Satellite tiles layer
+    if (state.satelliteActive) {
+        if (!state.leafletMap.hasLayer(state.leafletSatelliteLayer)) {
+            state.leafletSatelliteLayer.addTo(state.leafletMap);
+        }
+    } else {
+        if (state.leafletMap.hasLayer(state.leafletSatelliteLayer)) {
+            state.leafletMap.removeLayer(state.leafletSatelliteLayer);
+        }
+    }
+
+    // 2. Rebuild / Sync Vector Landmasses layer (only visible when Satellite mode is OFF)
+    if (state.leafletVectorLayer) {
+        state.leafletMap.removeLayer(state.leafletVectorLayer);
+    }
+
+    if (!state.satelliteActive && state.countriesGeoJSON) {
+        state.leafletVectorLayer = L.geoJSON(state.countriesGeoJSON, {
+            style: function() {
+                return {
+                    fillColor: colors.landFill,
+                    fillOpacity: 1.0,
+                    color: colors.landStroke,
+                    weight: 0.7,
+                    opacity: 1.0
+                };
+            }
+        }).addTo(state.leafletMap);
+        
+        // Sync map background container with theme ocean color
+        state.leafletMap.getContainer().style.background = colors.ocean;
+    } else {
+        // Satellite active: use pure dark background container
+        state.leafletMap.getContainer().style.background = '#06040a';
+    }
+
+    // 3. Rebuild / Sync Curved geodesic paths layer
     if (state.leafletRoutesLayer) {
         state.leafletMap.removeLayer(state.leafletRoutesLayer);
     }
 
-    const colors = getThemeColors();
     const isP2P = state.selectedAirportIndex !== null && state.locationToIndex !== null;
     const fromAp = isP2P ? state.airports[state.selectedAirportIndex] : null;
     const toAp = isP2P ? state.airports[state.locationToIndex] : null;
