@@ -1570,7 +1570,7 @@ input[type="text"]:focus + .search-icon {
         font-size: 9px;
     }
     
-    .status-update-time span {
+    .status-time-label {
         display: none; /* Hide 'Last Updated:' text label to conserve horizontal space */
     }
     
