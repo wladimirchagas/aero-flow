@@ -1930,6 +1930,13 @@ function resetFilter() {
     document.getElementById('stats-desc-text').innerText = "Showing the global commercial flights network. Search and select an airline or an airport above to analyze specific routes and connectivity hubs.";
     document.getElementById('top-hubs-container').style.display = 'none';
 
+    // Smoothly reset camera to default view when filters are cleared
+    if (state.projectionType === 'globe') {
+        animateCameraTo([0, -20, 0], 1.0, [0, 0]);
+    } else {
+        animateCameraTo([0, 0, 0], 1.0, [0, 0]);
+    }
+
     markDirty();
 }
 
@@ -1997,14 +2004,66 @@ function activateLocationTab() {
     hideSuggestions();
 }
 
-// Focus D3 camera projection on specific set of points — instant snap, no animation
-function focusCameraOnPoints(_points) {
-    // Camera repositioning disabled: map stays in place when filters change
+// Focus D3 camera projection on specific set of points with smooth animation
+function focusCameraOnPoints(points) {
+    if (!points || points.length === 0) return;
+    const [lon, lat] = points[0];
+    const isMobile = state.width <= 768;
+    
+    // Choose a subtle zoom-in for active focus (e.g. 1.25 for desktop, 1.05 for mobile)
+    const targetZoom = isMobile ? 1.05 : 1.25;
+    
+    if (state.projectionType === 'globe') {
+        // In orthographic globe, rotate by [-lon, -lat, 0] to bring the point to center stage
+        const targetRotation = [-lon, -lat, 0];
+        animateCameraTo(targetRotation, targetZoom, [0, 0]);
+    } else {
+        // In flat map mode, rotate by [-lon, 0, 0] to center longitude, and translate vertically to center latitude
+        const targetRotation = [-lon, 0, 0];
+        
+        const shift = isMobile ? 0 : 100 * state.sidebarOffsetTransition;
+        const center = [state.width / 2 + shift, state.height / 2];
+        
+        // Use a temporary projection to calculate the precise vertical translation offset needed
+        const tempProjection = d3.geoEqualEarth()
+            .scale(state.scale.flat * targetZoom)
+            .translate(center)
+            .rotate([targetRotation[0], 0, 0]);
+            
+        const projected = tempProjection([lon, lat]);
+        const ty = projected ? (center[1] - projected[1]) : 0;
+        
+        animateCameraTo(targetRotation, targetZoom, [0, ty]);
+    }
 }
 
-function focusCameraOnRoutes(_routes) {
-    // Camera repositioning disabled: map stays in place when filters change
+function focusCameraOnRoutes(routes) {
+    if (!routes || routes.length === 0) return;
+    
+    // Analyze active routes to find the busiest airport (hub), then center on it
+    const airportCounts = {};
+    routes.forEach(r => {
+        if (r.src) airportCounts[r.src.iata] = (airportCounts[r.src.iata] || 0) + 1;
+        if (r.dst) airportCounts[r.dst.iata] = (airportCounts[r.dst.iata] || 0) + 1;
+    });
+    
+    let busiestIata = null;
+    let maxCount = -1;
+    Object.entries(airportCounts).forEach(([iata, count]) => {
+        if (count > maxCount) {
+            maxCount = count;
+            busiestIata = iata;
+        }
+    });
+    
+    if (busiestIata) {
+        const ap = state.airports.find(a => a.iata === busiestIata);
+        if (ap) {
+            focusCameraOnPoints([[ap.lon, ap.lat]]);
+        }
+    }
 }
+
 
 // Count unique airports in active routes list
 function getUniqueAirportsCount(routes) {
