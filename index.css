@@ -801,6 +801,13 @@ input[type="text"]:focus + .search-icon {
     height: 16px;
 }
 
+.control-divider {
+    height: 1px;
+    background: var(--color-glass-border);
+    margin: 4px 6px;
+    opacity: 0.6;
+}
+
 /* Map Details Tooltip styling */
 .tooltip {
     position: absolute;

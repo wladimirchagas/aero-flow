@@ -161,34 +161,6 @@
                     </div>
                 </section>
 
-                <!-- Projection Selection -->
-                <section class="control-group">
-                    <h2 class="section-title"><i data-lucide="globe"></i> Earth Projection</h2>
-                    <div class="projection-toggle">
-                        <button class="proj-btn" id="btn-globe" data-proj="globe">
-                            <i data-lucide="orbit"></i>
-                            <span>3D Globe</span>
-                        </button>
-                        <button class="proj-btn active" id="btn-flat" data-proj="flat">
-                            <i data-lucide="map"></i>
-                            <span>2D Flat Map</span>
-                        </button>
-                    </div>
-
-                    <!-- Satellite View Toggle (visible only in 2D mode) -->
-                    <div class="satellite-toggle-box" id="sat-toggle-box">
-                        <label class="switch-label">
-                            <input type="checkbox" id="chk-satellite">
-                            <span class="slider"></span>
-                            <span class="switch-text">Satellite Imagery</span>
-                        </label>
-                    </div>
-
-                    <p class="proj-info">
-                        <i data-lucide="info" class="inline-icon"></i> 
-                        <span id="projection-info-text">2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.</span>
-                    </p>
-                </section>
 
             </main>
 
@@ -224,6 +196,12 @@
             <button class="control-btn" id="ctrl-zoom-out" title="Zoom Out"><i data-lucide="minus"></i></button>
             <button class="control-btn" id="ctrl-reset" title="Reset Camera"><i data-lucide="refresh-cw"></i></button>
             <button class="control-btn" id="ctrl-auto-rotate" title="Toggle Auto-Rotation"><i data-lucide="pause"></i></button>
+            
+            <div class="control-divider"></div>
+
+            <button class="control-btn active" id="btn-flat" data-proj="flat" title="2D Flat Map"><i data-lucide="map"></i></button>
+            <button class="control-btn" id="btn-globe" data-proj="globe" title="3D Globe"><i data-lucide="orbit"></i></button>
+            <button class="control-btn" id="ctrl-satellite" title="Toggle Satellite Imagery"><i data-lucide="satellite"></i></button>
         </div>
 
         <!-- Region Focus Navigation Dock (Bottom Center) -->

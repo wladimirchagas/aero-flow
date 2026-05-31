@@ -646,15 +646,18 @@ function initUI() {
         state.projectionType = 'globe';
         btnGlobe.classList.add('active');
         btnFlat.classList.remove('active');
-        projInfo.innerText = "Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.";
+        if (projInfo) {
+            projInfo.innerText = "Orthographic projection: Drag to rotate the planet. Scroll to zoom. Great-circle curves represent real flight paths.";
+        }
         
         // Always display Canvas
         document.getElementById('mapCanvas').style.display = 'block';
         const leafletMapEl = document.getElementById('leafletMap');
         if (leafletMapEl) leafletMapEl.style.display = 'none';
 
-        // Keep satellite checkbox panel visible in 3D mode
-        document.getElementById('sat-toggle-box').style.display = 'flex';
+        // Keep satellite checkbox panel visible in 3D mode (if present)
+        const satToggleBox = document.getElementById('sat-toggle-box');
+        if (satToggleBox) satToggleBox.style.display = 'flex';
 
         setupProjections();
         markDirty();
@@ -665,25 +668,40 @@ function initUI() {
         state.projectionType = 'flat';
         btnFlat.classList.add('active');
         btnGlobe.classList.remove('active');
-        projInfo.innerText = "2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.";
+        if (projInfo) {
+            projInfo.innerText = "2D Flat Map: A clean vector projection showing global sovereign borders. Toggle 'Satellite Imagery' for high-resolution tiled satellite views.";
+        }
         
         // Always display Canvas
         document.getElementById('mapCanvas').style.display = 'block';
         const leafletMapEl = document.getElementById('leafletMap');
         if (leafletMapEl) leafletMapEl.style.display = 'none';
 
-        // Show satellite checkbox panel in 2D mode
-        document.getElementById('sat-toggle-box').style.display = 'flex';
+        // Show satellite checkbox panel in 2D mode (if present)
+        const satToggleBox = document.getElementById('sat-toggle-box');
+        if (satToggleBox) satToggleBox.style.display = 'flex';
 
         setupProjections();
         markDirty();
     });
 
-    // Wire up Satellite Imagery checkbox change listener
-    const chkSatellite = document.getElementById('chk-satellite');
-    if (chkSatellite) {
-        chkSatellite.addEventListener('change', (e) => {
-            state.satelliteActive = e.target.checked;
+    // Wire up Satellite Imagery button click listener
+    const ctrlSatellite = document.getElementById('ctrl-satellite');
+    if (ctrlSatellite) {
+        // Initialize state on startup
+        if (state.satelliteActive) {
+            ctrlSatellite.classList.add('active');
+        } else {
+            ctrlSatellite.classList.remove('active');
+        }
+
+        ctrlSatellite.addEventListener('click', () => {
+            state.satelliteActive = !state.satelliteActive;
+            if (state.satelliteActive) {
+                ctrlSatellite.classList.add('active');
+            } else {
+                ctrlSatellite.classList.remove('active');
+            }
             updateLeafletLayers();
         });
     }
