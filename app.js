@@ -520,10 +520,27 @@ async function loadData() {
         // 1. Activate the Location Tab in the sidebar UI
         activateLocationTab();
 
-        // 2. Pre-select Melbourne (Australia, IATA: MEL, index 139) as the absolute default
-        setLocationFilter(139);
+        // 2. Pre-select Melbourne (Australia, IATA: MEL) as the absolute default
+        const melIdx = state.airports.findIndex(ap => ap.iata === 'MEL');
+        const defaultIdx = melIdx !== -1 ? melIdx : 2554;
+        setLocationFilter(defaultIdx);
 
-        // 3. Request user's physical location in the background
+        // 3. Request user's physical location in the background with IP fallback
+        const tryIPGeolocation = async () => {
+            try {
+                const response = await fetch('https://freeipapi.com/api/json');
+                if (!response.ok) throw new Error('IP geolocation API error');
+                const data = await response.json();
+                if (data && typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+                    const closestApIdx = getClosestAirport(data.latitude, data.longitude);
+                    setLocationFilter(closestApIdx);
+                    console.log("Successfully determined closest international airport via IP:", state.airports[closestApIdx].iata);
+                }
+            } catch (err) {
+                console.warn("IP geolocation fallback also failed. Staying with Melbourne.", err);
+            }
+        };
+
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -531,13 +548,17 @@ async function loadData() {
                     const lon = position.coords.longitude;
                     const closestApIdx = getClosestAirport(lat, lon);
                     setLocationFilter(closestApIdx);
+                    console.log("Successfully determined closest international airport via Geolocation:", state.airports[closestApIdx].iata);
                 },
                 (error) => {
-                    console.warn("Geolocation access denied or failed. Defaulting to Melbourne.", error);
-                    // Already defaulted to Melbourne, so no additional action is needed.
+                    console.warn("Geolocation access denied or failed. Trying IP-based fallback...", error);
+                    tryIPGeolocation();
                 },
                 { timeout: 8000, enableHighAccuracy: false }
             );
+        } else {
+            console.log("Geolocation API not supported. Trying IP-based fallback...");
+            tryIPGeolocation();
         }
 
         // Complete loader
@@ -1914,19 +1935,34 @@ function resetFilter() {
 
 // Helper to calculate the closest airport to a given lat/lon coordinate pair
 function getClosestAirport(lat, lon) {
-    let closestApIdx = 139; // Fallback to Melbourne (index 139)
+    let closestApIdx = -1;
     let minDistance = Infinity;
     
     state.airports.forEach((ap, idx) => {
-        // Equirectangular distance approximation (fast and accurate enough for proximity)
-        const x = (ap.lon - lon) * Math.cos((ap.lat + lat) * Math.PI / 360);
-        const y = ap.lat - lat;
-        const dist = x * x + y * y;
-        if (dist < minDistance) {
-            minDistance = dist;
-            closestApIdx = idx;
+        const isIntl = (
+            ap.name.toLowerCase().includes('international') || 
+            ap.name.toLowerCase().includes('intl') || 
+            ap.name.toLowerCase().includes('int\'l') || 
+            ap.name.toLowerCase().includes('internacional') || 
+            ap.flightsCount >= 50
+        ) && ap.flightsCount > 0;
+        
+        if (isIntl) {
+            // Equirectangular distance approximation (fast and accurate enough for proximity)
+            const x = (ap.lon - lon) * Math.cos((ap.lat + lat) * Math.PI / 360);
+            const y = ap.lat - lat;
+            const dist = x * x + y * y;
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestApIdx = idx;
+            }
         }
     });
+    
+    if (closestApIdx === -1) {
+        closestApIdx = state.airports.findIndex(ap => ap.iata === 'MEL');
+        if (closestApIdx === -1) closestApIdx = 2554; // absolute fallback
+    }
     
     return closestApIdx;
 }
