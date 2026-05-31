@@ -38,8 +38,8 @@ const state = {
     animFrameId: null,
 
     // Sidebar transition state
-    sidebarCollapsed: false,
-    sidebarOffsetTransition: 1.0, // 1.0 = open, 0.0 = collapsed
+    sidebarCollapsed: window.innerWidth <= 768,
+    sidebarOffsetTransition: window.innerWidth <= 768 ? 0.0 : 1.0, // 0.0 = collapsed, 1.0 = open
 
     // PERF: dirty-flag — only repaint when something changed
     needsRender: true,
@@ -359,6 +359,86 @@ function setupInteractions() {
         state.isDragging = false;
     });
 
+    // Touch dragging & pinch-to-zoom
+    canvas.addEventListener('touchstart', (e) => {
+        clearActiveRegionButtons();
+        
+        if (e.touches.length === 1) {
+            // Single-finger dragging
+            state.isDragging = true;
+            const touch = e.touches[0];
+            state.dragStart = [touch.clientX, touch.clientY];
+            state.dragRotationStart = [...state.rotation];
+            state.dragTranslationStart = [...state.translation];
+            state.isPinching = false;
+            
+            if (state.autoRotate) {
+                toggleAutoRotate(false);
+            }
+        } else if (e.touches.length === 2) {
+            // Pinch-to-zoom setup
+            state.isDragging = false;
+            state.isPinching = true;
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            state.pinchStartDist = Math.sqrt(dx * dx + dy * dy);
+            state.pinchStartZoom = state.zoom;
+        }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+        if (state.isDragging && e.touches.length === 1) {
+            const touch = e.touches[0];
+            const dx = touch.clientX - state.dragStart[0];
+            const dy = touch.clientY - state.dragStart[1];
+
+            if (state.projectionType === 'globe') {
+                const sensitivity = 0.25 / state.zoom;
+                state.rotation[0] = state.dragRotationStart[0] + dx * sensitivity;
+                state.rotation[1] = state.dragRotationStart[1] - dy * sensitivity;
+                state.rotation[1] = Math.max(-85, Math.min(85, state.rotation[1]));
+            } else {
+                const sensitivity = 0.25 / state.zoom;
+                state.rotation[0] = state.dragRotationStart[0] + dx * sensitivity;
+                state.translation[1] = state.dragTranslationStart[1] + dy;
+                state.translation[0] = state.dragTranslationStart[0] + dx * 0.5;
+            }
+
+            setupProjections();
+            markDirty();
+        } else if (state.isPinching && e.touches.length === 2) {
+            const t1 = e.touches[0];
+            const t2 = e.touches[1];
+            const dx = t1.clientX - t2.clientX;
+            const dy = t1.clientY - t2.clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (state.pinchStartDist > 0) {
+                const ratio = dist / state.pinchStartDist;
+                state.zoom = Math.max(0.6, Math.min(250, state.pinchStartZoom * ratio));
+                setupProjections();
+                markDirty();
+            }
+        }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+            state.isDragging = false;
+            state.isPinching = false;
+        } else if (e.touches.length === 1) {
+            // Fall back to single-finger dragging with the remaining finger
+            state.isPinching = false;
+            state.isDragging = true;
+            const touch = e.touches[0];
+            state.dragStart = [touch.clientX, touch.clientY];
+            state.dragRotationStart = [...state.rotation];
+            state.dragTranslationStart = [...state.translation];
+        }
+    }, { passive: true });
+
     // Zoom control
     canvas.addEventListener('wheel', (e) => {
         clearActiveRegionButtons();
@@ -383,10 +463,18 @@ function setupInteractions() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         
         // If the mouse barely moved, register it as a click rather than a drag
-        if (dist < 5 && state.hoveredItem) {
-            const apIdx = state.airports.indexOf(state.hoveredItem);
-            if (apIdx !== -1) {
-                handleAirportClick(apIdx);
+        if (dist < 5) {
+            // Light-dismiss sidebar on mobile if expanded
+            if (window.innerWidth <= 768 && !state.sidebarCollapsed) {
+                toggleSidebar(true);
+                return;
+            }
+
+            if (state.hoveredItem) {
+                const apIdx = state.airports.indexOf(state.hoveredItem);
+                if (apIdx !== -1) {
+                    handleAirportClick(apIdx);
+                }
             }
         }
     });
@@ -695,6 +783,29 @@ function initUI() {
         toggleSidebar();
     });
 
+    // 7b. Mobile floating filters trigger
+    const mobileFilterBtn = document.getElementById('mobile-filter-btn');
+    if (mobileFilterBtn) {
+        mobileFilterBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSidebar();
+        });
+    }
+
+    // Set responsive startup state for sidebar visual classes
+    if (state.sidebarCollapsed) {
+        const sidebar = document.getElementById('sidebar-panel');
+        if (sidebar) sidebar.classList.add('collapsed');
+        const icon = document.getElementById('sidebar-toggle-icon');
+        if (icon) {
+            icon.setAttribute('data-lucide', 'chevron-right');
+            if (window.lucide) lucide.createIcons({ nodes: [icon] });
+        }
+        if (mobileFilterBtn) {
+            mobileFilterBtn.style.display = 'flex';
+        }
+    }
+
     // 8. Keyboard hotkey listener ('\' or 's' key to toggle sidebar)
     window.addEventListener('keydown', (e) => {
         const activeEl = document.activeElement;
@@ -766,6 +877,12 @@ function toggleSidebar(collapsed) {
     // Re-initialize only this specific icon
     if (window.lucide) {
         lucide.createIcons({ nodes: [icon] });
+    }
+
+    // Update mobile filters trigger visibility
+    const mobileFilterBtn = document.getElementById('mobile-filter-btn');
+    if (mobileFilterBtn) {
+        mobileFilterBtn.style.display = (state.sidebarCollapsed && window.innerWidth <= 768) ? 'flex' : 'none';
     }
 
     markDirty();
