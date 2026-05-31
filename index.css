@@ -1189,6 +1189,11 @@ input[type="text"]:focus + .search-icon {
         transform: translateX(-100%);
     }
 
+    /* CRITICAL: Prevent iOS / mobile browsers from automatically zooming the page on input focus by enforcing a 16px font-size */
+    input[type="text"] {
+        font-size: 16px;
+    }
+
     /* Padding & spacing reduction inside mobile drawer to prevent layout overflows */
     .app-header {
         padding: 18px 16px 14px 16px;
