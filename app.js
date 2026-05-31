@@ -835,6 +835,73 @@ function initUI() {
             toggleSidebar();
         }
     });
+
+    // 9. Initialize bottom status bar metadata and reload hooks
+    initStatusBar();
+}
+
+// Initialize Bottom Status Bar (Live Release & Last Update time)
+function initStatusBar() {
+    // 1. Live Release Metadata
+    const releaseVersion = "v1.4.0"; // Corresponds to script v=14
+    const lastUpdateIso = "2026-05-31T06:30:14Z"; // ISO 8601 UTC timestamp of last update
+    
+    // Set Version Text
+    const versionVal = document.getElementById('status-version-val');
+    if (versionVal) {
+        versionVal.textContent = releaseVersion;
+    }
+    
+    // Format and Set Last Updated Date
+    const timeVal = document.getElementById('status-time-val');
+    if (timeVal) {
+        try {
+            const date = new Date(lastUpdateIso);
+            // Format using local browser settings config to handle timezone automatically
+            const formatter = new Intl.DateTimeFormat(navigator.language, {
+                dateStyle: 'medium',
+                timeStyle: 'short'
+            });
+            timeVal.textContent = formatter.format(date);
+        } catch (e) {
+            console.error("Failed to parse or format update time:", e);
+            timeVal.textContent = lastUpdateIso; // Fallback to raw string
+        }
+    }
+    
+    // Setup Force Reload Button
+    const refreshBtn = document.getElementById('status-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            // Visual feedback on click: spin the icon
+            const icon = refreshBtn.querySelector('i');
+            if (icon) {
+                icon.style.animation = 'none';
+                // Trigger reflow to restart animation
+                void icon.offsetHeight; 
+                icon.style.animation = 'spinRefresh 0.8s ease-in-out';
+            }
+            
+            // Hard refresh bypasses browser cache for the main resource and loads latest changes
+            try {
+                await fetch(window.location.href, {
+                    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+                    cache: 'reload'
+                });
+            } catch (e) {
+                console.warn("Bypass cache pre-fetch failed, executing standard reload:", e);
+            }
+            window.location.reload();
+        });
+    }
+
+    // Activate Lucide icons for the status bar
+    if (window.lucide) {
+        const statusBarEl = document.getElementById('live-status-bar');
+        if (statusBarEl) {
+            lucide.createIcons({ nodes: [statusBarEl] });
+        }
+    }
 }
 
 // Re-apply active filters when toggling modes

@@ -239,6 +239,28 @@
             </div>
         </div>
 
+        <!-- Live Release Status Bar (Bottom Sticky) -->
+        <div class="status-bar glass" id="live-status-bar">
+            <div class="status-left">
+                <span class="status-indicator">
+                    <span class="status-dot"></span>
+                    Live
+                </span>
+                <span class="status-divider"></span>
+                <span class="status-version">Release: <strong id="status-version-val">v1.4.0</strong></span>
+            </div>
+            <div class="status-right">
+                <span class="status-update-time">
+                    <i data-lucide="clock" class="inline-icon-small"></i>
+                    Last Updated: <span id="status-time-val">Loading...</span>
+                </span>
+                <button class="status-refresh-btn" id="status-refresh-btn" title="Force check for updates (Hard Refresh)">
+                    <i data-lucide="refresh-cw" class="inline-icon-small"></i>
+                    <span>Force Reload</span>
+                </button>
+            </div>
+        </div>
+
     </div>
 
     <!-- D3.js Library (defer to not block parsing) -->
